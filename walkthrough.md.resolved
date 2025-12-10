@@ -1,0 +1,69 @@
+# Backend Implementation Walkthrough
+
+I have successfully implemented the Node.js + Express backend for your Map Photo Sharing App.
+
+## 📂 Project Structure
+
+- `backend/`
+  - [server.js](file:///c:/Users/Panda/Desktop/raibu/backend/server.js): Main entry point.
+  - `config/`: Configuration for Supabase and Cloudflare R2.
+  - `routes/`: API route handlers ([points.js](file:///c:/Users/Panda/Desktop/raibu/backend/routes/points.js), [images.js](file:///c:/Users/Panda/Desktop/raibu/backend/routes/images.js), [interactions.js](file:///c:/Users/Panda/Desktop/raibu/backend/routes/interactions.js)).
+  - [schema.sql](file:///c:/Users/Panda/Desktop/raibu/backend/schema.sql): SQL script to set up your Supabase database.
+  - [.env](file:///c:/Users/Panda/Desktop/raibu/backend/.env): Environment variables (needs your keys).
+  - [test-api.js](file:///c:/Users/Panda/Desktop/raibu/backend/test-api.js): Script to verify the API.
+
+## 🚀 How to Run
+
+1.  **Install Dependencies**:
+    ```bash
+    cd backend
+    npm install
+    ```
+
+2.  **Configure Environment**:
+    - Open [backend/.env](file:///c:/Users/Panda/Desktop/raibu/backend/.env).
+    - Fill in your Supabase URL/Key and Cloudflare R2 credentials.
+
+3.  **Setup Database**:
+    - Go to your Supabase Dashboard -> SQL Editor.
+    - Copy the content of [backend/schema.sql](file:///c:/Users/Panda/Desktop/raibu/backend/schema.sql) and run it.
+    - This will create the tables (`points`, `images`, `point_likes`, `point_comments`, `comment_likes`) and set up RLS policies.
+
+4.  **Start Server**:
+    ```bash
+    npm start
+    ```
+    The server will run on `http://localhost:3000`.
+
+## 🧪 How to Test
+
+I have provided a test script [test-api.js](file:///c:/Users/Panda/Desktop/raibu/backend/test-api.js).
+
+1.  **Run the Test Script**:
+    ```bash
+    node test-api.js
+    ```
+    *Note: This script requires Node.js 18+ (for built-in `fetch`). If you are on an older version, you might need to install `node-fetch`.*
+
+2.  **Manual Testing**:
+    You can also use Postman or curl.
+    - **Create Point**: `POST /points`
+    - **Upload Image**: `POST /points/:id/images` (multipart/form-data)
+    - **List Points**: `GET /points`
+
+## 📝 API Endpoints
+
+| Method | Endpoint | Description |
+|Data|---|---|
+| GET | `/points` | List points (supports `lat_min`, `lat_max`, etc.) |
+| POST | `/points` | Create a new point |
+| GET | `/points/:id` | Get point details |
+| POST | `/points/:id/images` | Upload image to R2 |
+| GET | `/points/:id/images` | Get images (signed URLs) |
+| POST | `/points/:id/like` | Like a point |
+| POST | `/points/:id/comments` | Add a comment |
+
+## ⚠️ Important Notes
+
+- **Authentication**: Currently, the API expects `user_id` in the request body for simplicity during development. In a production environment, you should verify the Supabase JWT token in the `Authorization` header.
+- **Image Processing**: The backend uses `sharp` to resize images before uploading to R2.
