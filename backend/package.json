@@ -1,12 +1,24 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "raibu-backend",
+  "version": "3.1.0",
+  "description": "Raibu Backend API - 根據系統框架規格書 v3.1 重構",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node tests/run-all.js",
+    "test:upload": "node tests/manual/upload.test.js",
+    "test:asks": "node tests/manual/asks.test.js",
+    "test:records": "node tests/manual/records.test.js",
+    "test:likes": "node tests/manual/likes.test.js",
+    "test:replies": "node tests/manual/replies.test.js",
+    "test:users": "node tests/manual/users.test.js"
   },
-  "keywords": [],
+  "keywords": [
+    "raibu",
+    "map",
+    "api"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -19,6 +31,7 @@
     "form-data": "^4.0.5",
     "multer": "^2.0.2",
     "node-fetch": "^2.7.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "uuid": "^11.0.3"
   }
 }

@@ -1,105 +1,202 @@
--- Enable PostGIS extension if needed for advanced geo queries (optional, but good for maps)
--- create extension if not exists postgis;
+-- ============================================
+-- Raibu Database Schema v3.1
+-- 根據系統框架規格書設計
+-- ============================================
 
--- 1. Points Table
-create table public.points (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references auth.users(id) not null,
-  title text not null,
-  description text,
-  lat double precision not null,
-  lng double precision not null,
-  likes_count int default 0, -- Cached count
-  comments_count int default 0, -- Cached count
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- 1. 啟用 PostGIS 擴展
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- ============================================
+-- 2. 使用者記錄 (User Model)
+-- ============================================
+CREATE TABLE public.users (
+  id UUID PRIMARY KEY REFERENCES auth.users(id),
+  display_name TEXT,
+  avatar_url TEXT,
+  total_views INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
--- 2. Images Table
-create table public.images (
-  id uuid default gen_random_uuid() primary key,
-  point_id uuid references public.points(id) on delete cascade not null,
-  uploader_id uuid references auth.users(id) not null,
-  image_url text not null, -- R2 URL or path
-  thumbnail_url text,      -- R2 Thumbnail URL or path
-  taken_at timestamp with time zone,
-  latitude double precision,
-  longitude double precision,
-  country text,
-  administrative_area text,
-  locality text,
-  sub_locality text,
-  thoroughfare text,
-  sub_thoroughfare text,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- ============================================
+-- 3. 紀錄標點主記錄 (Record Model)
+-- ============================================
+CREATE TABLE public.records (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.users(id) NOT NULL,
+  description TEXT NOT NULL,
+  main_image_url TEXT,
+  media_count INTEGER DEFAULT 0,
+  like_count INTEGER DEFAULT 0,
+  view_count INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
--- 3. Point Likes Table
-create table public.point_likes (
-  id uuid default gen_random_uuid() primary key,
-  point_id uuid references public.points(id) on delete cascade not null,
-  user_id uuid references auth.users(id) not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  unique(point_id, user_id)
+-- ============================================
+-- 4. 詢問標點主記錄 (Ask Model)
+-- ============================================
+CREATE TABLE public.asks (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.users(id) NOT NULL,
+  center GEOMETRY(Point, 4326) NOT NULL,
+  radius_meters INTEGER DEFAULT 500,
+  question TEXT NOT NULL,
+  main_image_url TEXT,
+  status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'RESOLVED')),
+  like_count INTEGER DEFAULT 0,
+  view_count INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
--- 4. Point Comments Table
-create table public.point_comments (
-  id uuid default gen_random_uuid() primary key,
-  point_id uuid references public.points(id) on delete cascade not null,
-  user_id uuid references auth.users(id) not null,
-  content text not null,
-  likes_count int default 0,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- ============================================
+-- 5. 回覆記錄 (Reply Model)  
+-- ============================================
+CREATE TABLE public.replies (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  record_id UUID REFERENCES public.records(id) ON DELETE CASCADE,
+  ask_id UUID REFERENCES public.asks(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES public.users(id) NOT NULL,
+  content TEXT NOT NULL,
+  is_onsite BOOLEAN DEFAULT FALSE,
+  like_count INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT reply_target_check CHECK (
+    (record_id IS NOT NULL AND ask_id IS NULL) OR 
+    (record_id IS NULL AND ask_id IS NOT NULL)
+  )
 );
 
--- 5. Comment Likes Table
-create table public.comment_likes (
-  id uuid default gen_random_uuid() primary key,
-  comment_id uuid references public.point_comments(id) on delete cascade not null,
-  user_id uuid references auth.users(id) not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  unique(comment_id, user_id)
+-- ============================================
+-- 6. 圖片媒體記錄 (Image Media Model)
+-- ============================================
+CREATE TABLE public.image_media (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.users(id) NOT NULL,
+  client_key TEXT,
+  record_id UUID REFERENCES public.records(id) ON DELETE CASCADE,
+  ask_id UUID REFERENCES public.asks(id) ON DELETE CASCADE,
+  reply_id UUID REFERENCES public.replies(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'COMPLETED')),
+  original_public_url TEXT,
+  thumbnail_public_url TEXT,
+  location GEOMETRY(Point, 4326),
+  captured_at TIMESTAMPTZ,
+  uploaded_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  display_order INTEGER DEFAULT 0,
+  CONSTRAINT image_parent_check CHECK (
+    (record_id IS NOT NULL AND ask_id IS NULL AND reply_id IS NULL) OR
+    (record_id IS NULL AND ask_id IS NOT NULL AND reply_id IS NULL) OR
+    (record_id IS NULL AND ask_id IS NULL AND reply_id IS NOT NULL) OR
+    (record_id IS NULL AND ask_id IS NULL AND reply_id IS NULL)
+  )
 );
 
--- Enable Row Level Security (RLS)
-alter table public.points enable row level security;
-alter table public.images enable row level security;
-alter table public.point_likes enable row level security;
-alter table public.point_comments enable row level security;
-alter table public.comment_likes enable row level security;
+-- ============================================
+-- 7. 愛心記錄 (Like Model)
+-- ============================================
+CREATE TABLE public.likes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.users(id) NOT NULL,
+  record_id UUID REFERENCES public.records(id) ON DELETE CASCADE,
+  ask_id UUID REFERENCES public.asks(id) ON DELETE CASCADE,
+  reply_id UUID REFERENCES public.replies(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT like_target_check CHECK (
+    (record_id IS NOT NULL AND ask_id IS NULL AND reply_id IS NULL) OR
+    (record_id IS NULL AND ask_id IS NOT NULL AND reply_id IS NULL) OR
+    (record_id IS NULL AND ask_id IS NULL AND reply_id IS NOT NULL)
+  )
+);
 
--- Policies
+-- 唯一約束：防止重複點讚
+CREATE UNIQUE INDEX idx_likes_user_record ON public.likes (user_id, record_id) WHERE record_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_likes_user_ask ON public.likes (user_id, ask_id) WHERE ask_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_likes_user_reply ON public.likes (user_id, reply_id) WHERE reply_id IS NOT NULL;
 
--- Points
-create policy "Points are viewable by everyone" on public.points for select using (true);
-create policy "Users can insert their own points" on public.points for insert with check (auth.uid() = user_id);
-create policy "Users can update their own points" on public.points for update using (auth.uid() = user_id);
-create policy "Users can delete their own points" on public.points for delete using (auth.uid() = user_id);
+-- ============================================
+-- 8. 清理日誌表 (Cleanup Logs Model)
+-- ============================================
+CREATE TABLE public.cleanup_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  deleted_image_id UUID NOT NULL,
+  deleted_user_id UUID,
+  client_key TEXT,
+  reason TEXT,
+  deleted_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
 
--- Images
-create policy "Images are viewable by everyone" on public.images for select using (true);
-create policy "Users can insert images" on public.images for insert with check (auth.uid() = uploader_id);
+-- ============================================
+-- 9. 空間索引
+-- ============================================
+CREATE INDEX idx_images_location ON public.image_media USING GIST (location);
+CREATE INDEX idx_asks_center ON public.asks USING GIST (center);
 
--- Point Likes
-create policy "Likes are viewable by everyone" on public.point_likes for select using (true);
-create policy "Users can insert likes" on public.point_likes for insert with check (auth.uid() = user_id);
-create policy "Users can delete their own likes" on public.point_likes for delete using (auth.uid() = user_id);
+-- 其他常用索引
+CREATE INDEX idx_image_media_record_id ON public.image_media (record_id);
+CREATE INDEX idx_image_media_ask_id ON public.image_media (ask_id);
+CREATE INDEX idx_image_media_reply_id ON public.image_media (reply_id);
+CREATE INDEX idx_image_media_status ON public.image_media (status);
+CREATE INDEX idx_image_media_uploaded_at ON public.image_media (uploaded_at);
+CREATE INDEX idx_replies_record_id ON public.replies (record_id);
+CREATE INDEX idx_replies_ask_id ON public.replies (ask_id);
+CREATE INDEX idx_asks_created_at ON public.asks (created_at);
 
--- Comments
-create policy "Comments are viewable by everyone" on public.point_comments for select using (true);
-create policy "Users can insert comments" on public.point_comments for insert with check (auth.uid() = user_id);
+-- ============================================
+-- 10. 啟用 Row Level Security (RLS)
+-- ============================================
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.asks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.replies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.image_media ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cleanup_logs ENABLE ROW LEVEL SECURITY;
 
--- Comment Likes
-create policy "Comment Likes are viewable by everyone" on public.comment_likes for select using (true);
-create policy "Users can insert comment likes" on public.comment_likes for insert with check (auth.uid() = user_id);
-create policy "Users can delete their own comment likes" on public.comment_likes for delete using (auth.uid() = user_id);
+-- ============================================
+-- 11. RLS 政策
+-- ============================================
 
--- Realtime
-alter publication supabase_realtime add table public.points;
-alter publication supabase_realtime add table public.images;
-alter publication supabase_realtime add table public.point_likes;
-alter publication supabase_realtime add table public.point_comments;
-alter publication supabase_realtime add table public.comment_likes;
+-- Users
+CREATE POLICY "Users are viewable by everyone" ON public.users FOR SELECT USING (true);
+CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
 
--- Functions & Triggers for Counts (Optional but recommended for performance)
--- You can add triggers here to update points.likes_count, points.comments_count, point_comments.likes_count
+-- Records
+CREATE POLICY "Records are viewable by everyone" ON public.records FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own records" ON public.records FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update their own records" ON public.records FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own records" ON public.records FOR DELETE USING (auth.uid() = user_id);
+
+-- Asks
+CREATE POLICY "Asks are viewable by everyone" ON public.asks FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own asks" ON public.asks FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update their own asks" ON public.asks FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own asks" ON public.asks FOR DELETE USING (auth.uid() = user_id);
+
+-- Replies
+CREATE POLICY "Replies are viewable by everyone" ON public.replies FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own replies" ON public.replies FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update their own replies" ON public.replies FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own replies" ON public.replies FOR DELETE USING (auth.uid() = user_id);
+
+-- Image Media
+CREATE POLICY "Images are viewable by everyone" ON public.image_media FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own images" ON public.image_media FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update their own images" ON public.image_media FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own images" ON public.image_media FOR DELETE USING (auth.uid() = user_id);
+
+-- Likes
+CREATE POLICY "Likes are viewable by everyone" ON public.likes FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own likes" ON public.likes FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own likes" ON public.likes FOR DELETE USING (auth.uid() = user_id);
+
+-- Cleanup Logs (僅管理員可存取)
+CREATE POLICY "Only service role can access cleanup logs" ON public.cleanup_logs FOR ALL USING (false);
+
+-- ============================================
+-- 12. 啟用 Realtime
+-- ============================================
+ALTER PUBLICATION supabase_realtime ADD TABLE public.records;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.asks;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.replies;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.likes;

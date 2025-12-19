@@ -11,26 +11,49 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Routes
-const pointsRoutes = require('./routes/points');
-const imagesRoutes = require('./routes/images');
-const interactionsRoutes = require('./routes/interactions');
+// Import error handler
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
-app.use('/points', pointsRoutes);
-app.use('/points', imagesRoutes); // Mounted on /points to match /points/:pointId/images
-app.use('/points', interactionsRoutes); // Mounted on /points to match /points/:pointId/like etc.
+// Import routes
+const uploadRoutes = require('./routes/upload');
+const recordsRoutes = require('./routes/records');
+const asksRoutes = require('./routes/asks');
+const repliesRoutes = require('./routes/replies');
+const likesRoutes = require('./routes/likes');
+const usersRoutes = require('./routes/users');
+
+// API v1 Routes
+app.use('/api/v1/upload', uploadRoutes);
+app.use('/api/v1/records', recordsRoutes);
+app.use('/api/v1/asks', asksRoutes);
+app.use('/api/v1/replies', repliesRoutes);
+app.use('/api/v1/likes', likesRoutes);
+app.use('/api/v1/users', usersRoutes);
 
 // Health Check
 app.get('/', (req, res) => {
-  res.send('Map App Backend is running!');
+  res.json({ 
+    status: 'ok',
+    message: 'Raibu Backend API v1',
+    version: '3.1',
+    endpoints: {
+      upload: '/api/v1/upload',
+      records: '/api/v1/records',
+      asks: '/api/v1/asks',
+      replies: '/api/v1/replies',
+      likes: '/api/v1/likes',
+      users: '/api/v1/users',
+    }
+  });
 });
 
-// Error Handling
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
+// 404 Handler
+app.use(notFoundHandler);
+
+// Global Error Handler
+app.use(errorHandler);
 
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`🚀 Raibu Backend is running on port ${PORT}`);
+  console.log(`📍 API Base URL: http://localhost:${PORT}/api/v1`);
 });
