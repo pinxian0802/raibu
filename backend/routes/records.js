@@ -57,7 +57,7 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
 
   // 建立 Record 記錄
   const firstImage = images.find(img => img.display_order === 0) || images[0];
-  
+
   const { data: record, error: recordError } = await supabase
     .from('records')
     .insert({
@@ -77,7 +77,7 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
   // 更新所有圖片的狀態和關聯
   for (const img of images) {
     const { lat, lng } = img.location;
-    
+
     // 使用 RPC 呼叫來更新 PostGIS 欄位
     const { error: updateError } = await supabase.rpc('update_image_with_location', {
       p_image_id: img.upload_id,
@@ -105,9 +105,14 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
 
   res.status(201).json({
     id: record.id,
+    user_id: record.user_id,
     description: record.description,
+    main_image_url: record.main_image_url,
     media_count: record.media_count,
+    like_count: record.like_count || 0,
+    view_count: record.view_count || 0,
     created_at: record.created_at,
+    updated_at: record.updated_at,
   });
 }));
 
@@ -141,7 +146,7 @@ router.get('/map', asyncHandler(async (req, res) => {
       .not('record_id', 'is', null);
 
     if (queryError) throw Errors.internal('查詢失敗');
-    
+
     res.json({ images: images || [] });
     return;
   }
@@ -192,12 +197,14 @@ router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
   }
 
   // 增加觀看次數
-  await supabase.rpc('increment_view_count', { 
-    p_table: 'records', 
-    p_id: id 
-  }).catch(() => {
-    // 忽略錯誤，觀看次數不是關鍵功能
+  const { error: viewError } = await supabase.rpc('increment_view_count', {
+    p_table: 'records',
+    p_id: id
   });
+  // 忽略錯誤，觀看次數不是關鍵功能
+  if (viewError) {
+    console.warn('Failed to increment view count:', viewError);
+  }
 
   res.json({
     id: record.id,
@@ -266,7 +273,7 @@ router.patch('/:id', requireAuth, asyncHandler(async (req, res) => {
 
     // 3. 找出要刪除的圖片
     const toDelete = [...currentImageIds].filter(id => !existingImageIds.has(id));
-    
+
     if (toDelete.length > 0) {
       // 取得要刪除的圖片 URLs 用於清理 R2
       const imagesToDelete = currentImages.filter(img => toDelete.includes(img.id));
@@ -306,7 +313,7 @@ router.patch('/:id', requireAuth, asyncHandler(async (req, res) => {
     for (let i = 0; i < sorted_images.length; i++) {
       const img = sorted_images[i];
       const imageId = img.type === 'EXISTING' ? img.image_id : img.upload_id;
-      
+
       await supabase
         .from('image_media')
         .update({ display_order: i })

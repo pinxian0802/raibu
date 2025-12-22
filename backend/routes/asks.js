@@ -69,7 +69,7 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
       })
       .select('id')
       .single();
-    
+
     if (error) throw Errors.internal('建立詢問失敗');
     askId = data.id;
   } else {
@@ -106,12 +106,29 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
       .eq('id', askId);
   }
 
+  // 取得完整的 Ask 資料回傳
+  const { data: createdAsk, error: fetchError } = await supabase
+    .from('asks')
+    .select('*')
+    .eq('id', askId)
+    .single();
+
+  if (fetchError || !createdAsk) {
+    throw Errors.internal('取得建立的詢問失敗');
+  }
+
   res.status(201).json({
-    id: askId,
-    question,
+    id: createdAsk.id,
+    user_id: createdAsk.user_id,
+    question: createdAsk.question,
     center,
-    radius_meters: radius_meters || 500,
-    status: 'ACTIVE',
+    radius_meters: createdAsk.radius_meters,
+    main_image_url: mainImageUrl,
+    status: createdAsk.status,
+    like_count: createdAsk.like_count || 0,
+    view_count: createdAsk.view_count || 0,
+    created_at: createdAsk.created_at,
+    updated_at: createdAsk.updated_at,
   });
 }));
 
@@ -138,19 +155,34 @@ router.get('/map', asyncHandler(async (req, res) => {
     // 如果 RPC 不存在，使用基本查詢（不含空間過濾）
     console.warn('RPC not available, using basic query');
     const cutoffTime = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    
+
     const { data: asks, error: queryError } = await supabase
       .from('asks')
-      .select('id, question, radius_meters, status')
+      .select('id, question, radius_meters, status, created_at')
       .gte('created_at', cutoffTime)
       .order('created_at', { ascending: false });
 
     if (queryError) throw Errors.internal('查詢失敗');
-    res.json({ asks: asks || [] });
+
+    // 由於沒有 PostGIS，無法取得座標，回傳空陣列
+    res.json({ asks: [] });
     return;
   }
 
-  res.json({ asks: data || [] });
+  // 轉換 RPC 回應格式以符合 Swift MapAsk 模型
+  const transformedAsks = (data || []).map(ask => ({
+    id: ask.id,
+    center: {
+      lat: ask.lat,
+      lng: ask.lng,
+    },
+    radius_meters: ask.radius_meters,
+    question: ask.question,
+    status: ask.status,
+    created_at: ask.created_at,
+  }));
+
+  res.json({ asks: transformedAsks });
 }));
 
 /**
@@ -253,7 +285,7 @@ router.patch('/:id', requireAuth, asyncHandler(async (req, res) => {
     for (let i = 0; i < sorted_images.length; i++) {
       const img = sorted_images[i];
       const imageId = img.type === 'EXISTING' ? img.image_id : img.upload_id;
-      
+
       if (img.type === 'NEW') {
         await supabase
           .from('image_media')

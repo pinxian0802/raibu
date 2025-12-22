@@ -68,7 +68,7 @@ router.get('/me/records', requireAuth, asyncHandler(async (req, res) => {
 
   const { data: records, error } = await supabase
     .from('records')
-    .select('id, description, main_image_url, like_count, view_count, created_at')
+    .select('id, user_id, description, main_image_url, media_count, like_count, view_count, created_at, updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
@@ -78,11 +78,14 @@ router.get('/me/records', requireAuth, asyncHandler(async (req, res) => {
 
   const formattedRecords = (records || []).map(record => ({
     id: record.id,
+    user_id: record.user_id,
     description: record.description,
-    thumbnail_url: record.main_image_url,
-    like_count: record.like_count,
-    view_count: record.view_count,
+    main_image_url: record.main_image_url,
+    media_count: record.media_count || 0,
+    like_count: record.like_count || 0,
+    view_count: record.view_count || 0,
     created_at: record.created_at,
+    updated_at: record.updated_at,
   }));
 
   res.json({ records: formattedRecords });
@@ -95,17 +98,62 @@ router.get('/me/records', requireAuth, asyncHandler(async (req, res) => {
 router.get('/me/asks', requireAuth, asyncHandler(async (req, res) => {
   const userId = req.user.id;
 
-  const { data: asks, error } = await supabase
-    .from('asks')
-    .select('id, question, status, like_count, view_count, created_at')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+  // 使用 RPC 取得有 center 座標的 asks
+  const { data: asksWithCoords, error: rpcError } = await supabase.rpc('get_user_asks_with_coords', {
+    p_user_id: userId,
+  });
 
-  if (error) {
-    throw Errors.internal('查詢詢問失敗');
+  if (rpcError) {
+    // RPC 不存在時使用基本查詢
+    console.warn('RPC not available, using basic query');
+    const { data: asks, error } = await supabase
+      .from('asks')
+      .select('id, user_id, question, radius_meters, main_image_url, status, like_count, view_count, created_at, updated_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw Errors.internal('查詢詢問失敗');
+    }
+
+    // 沒有 RPC 時無法取得 center 座標，使用預設值
+    const formattedAsks = (asks || []).map(ask => ({
+      id: ask.id,
+      user_id: ask.user_id,
+      center: { lat: 0, lng: 0 },  // 預設值
+      radius_meters: ask.radius_meters,
+      question: ask.question,
+      main_image_url: ask.main_image_url,
+      status: ask.status,
+      like_count: ask.like_count || 0,
+      view_count: ask.view_count || 0,
+      created_at: ask.created_at,
+      updated_at: ask.updated_at,
+    }));
+
+    res.json({ asks: formattedAsks });
+    return;
   }
 
-  res.json({ asks: asks || [] });
+  // 轉換 RPC 回應格式
+  const formattedAsks = (asksWithCoords || []).map(ask => ({
+    id: ask.id,
+    user_id: ask.user_id,
+    center: {
+      lat: ask.lat,
+      lng: ask.lng,
+    },
+    radius_meters: ask.radius_meters,
+    question: ask.question,
+    main_image_url: ask.main_image_url,
+    status: ask.status,
+    like_count: ask.like_count || 0,
+    view_count: ask.view_count || 0,
+    created_at: ask.created_at,
+    updated_at: ask.updated_at,
+  }));
+
+  res.json({ asks: formattedAsks });
 }));
 
 module.exports = router;

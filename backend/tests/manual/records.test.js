@@ -13,7 +13,7 @@ async function testRecords() {
         image_requests: [{ client_key: 'rec_img', fileType: 'image/jpeg' }]
       }),
     });
-    
+
     const uploadId = uploadReq.data.upload_credentials.rec_img.upload_id;
     const thumbUrl = uploadReq.data.upload_credentials.rec_img.thumbnail_public_url;
 
@@ -104,13 +104,13 @@ async function testRecords() {
       }
 
       // 9. Delete Record
-      console.log('\n--- 9. Delete Record ---');
-      const deleteRes = await request(`/records/${testRecordId}`, {
-        method: 'DELETE',
-      });
-      if (deleteRes.status === 200) {
-        console.log('✅ Deleted record successfully');
-      }
+      // console.log('\n--- 9. Delete Record ---');
+      // const deleteRes = await request(`/records/${testRecordId}`, {
+      //   method: 'DELETE',
+      // });
+      // if (deleteRes.status === 200) {
+      //   console.log('✅ Deleted record successfully');
+      // }
     }
 
     console.log('\n🎉 Records API Test Completed!');

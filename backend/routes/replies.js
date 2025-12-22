@@ -64,7 +64,7 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
           // 使用 RPC 檢查距離 (如果可用)
           // 這裡使用簡化的客戶端計算
           // 實際應該用 PostGIS ST_DWithin
-          
+
           // 暫時標記為 true，實際需要取得 ask center 座標
           // TODO: 使用 RPC 取得確切判斷
           isOnsite = true;
@@ -105,7 +105,16 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
     }
   }
 
-  res.status(201).json(reply);
+  res.status(201).json({
+    id: reply.id,
+    record_id: reply.record_id,
+    ask_id: reply.ask_id,
+    user_id: reply.user_id,
+    content: reply.content,
+    is_onsite: reply.is_onsite,
+    like_count: reply.like_count || 0,
+    created_at: reply.created_at,
+  });
 }));
 
 /**
