@@ -22,6 +22,7 @@ struct ImageMedia: Codable, Identifiable, Equatable {
     let location: Coordinate?
     let capturedAt: Date?
     let displayOrder: Int
+    let address: String?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -30,6 +31,7 @@ struct ImageMedia: Codable, Identifiable, Equatable {
         case location
         case capturedAt = "captured_at"
         case displayOrder = "display_order"
+        case address
     }
     
     /// 轉換為 CLLocationCoordinate2D
@@ -78,6 +80,7 @@ struct CreateImageRequest: Codable {
     let location: Coordinate?
     let capturedAt: Date?
     let displayOrder: Int
+    let address: String?
     
     enum CodingKeys: String, CodingKey {
         case uploadId = "upload_id"
@@ -86,5 +89,6 @@ struct CreateImageRequest: Codable {
         case location
         case capturedAt = "captured_at"
         case displayOrder = "display_order"
+        case address
     }
 }

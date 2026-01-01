@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import MapKit
 
 /// 詢問詳情 Sheet
 struct AskDetailSheetView: View {
@@ -15,6 +16,7 @@ struct AskDetailSheetView: View {
     let replyRepository: ReplyRepository
     
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @StateObject private var viewModel: AskDetailViewModel
     
     @State private var showDeleteConfirmation = false
@@ -33,8 +35,16 @@ struct AskDetailSheetView: View {
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
+        VStack(spacing: 0) {
+            // 拖曳指示條
+            Capsule()
+                .fill(Color(.systemGray3))
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+            
+            NavigationView {
+                ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if viewModel.isLoading {
                         ProgressView()
@@ -43,6 +53,10 @@ struct AskDetailSheetView: View {
                         askContent(ask)
                     } else if let error = viewModel.errorMessage {
                         errorView(error)
+                    } else {
+                        // Fallback: 確保不會有空白狀態
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 200)
                     }
                 }
                 .padding()
@@ -50,12 +64,6 @@ struct AskDetailSheetView: View {
             .navigationTitle("詢問詳情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("關閉") {
-                        dismiss()
-                    }
-                }
-                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if viewModel.ask?.userId == viewModel.currentUserId {
                         Menu {
@@ -109,6 +117,7 @@ struct AskDetailSheetView: View {
         .task {
             await viewModel.loadAsk()
         }
+        } // VStack
     }
     
     // MARK: - Ask Content
@@ -129,6 +138,18 @@ struct AskDetailSheetView: View {
                     .foregroundColor(.secondary)
                 
                 Spacer()
+                
+                // 在地圖上查看按鈕
+                Button {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        navigationCoordinator.navigateToMap(coordinate: ask.center.clLocationCoordinate, mapMode: .ask)
+                    }
+                } label: {
+                    Label("在地圖上查看", systemImage: "map")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.orange)
+                }
                 
                 if ask.status == .resolved {
                     Label("已解決", systemImage: "checkmark.circle.fill")
@@ -239,7 +260,9 @@ struct AskDetailSheetView: View {
                     .padding()
             } else {
                 ForEach(viewModel.replies) { reply in
-                    ReplyRowView(reply: reply)
+                    ReplyRowView(reply: reply) { replyId in
+                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                    }
                 }
             }
         }
@@ -279,7 +302,7 @@ struct AskDetailSheetView: View {
 class AskDetailViewModel: ObservableObject {
     @Published var ask: Ask?
     @Published var replies: [Reply] = []
-    @Published var isLoading = false
+    @Published var isLoading = true
     @Published var isLoadingReplies = false
     @Published var errorMessage: String?
     
@@ -328,17 +351,68 @@ class AskDetailViewModel: ObservableObject {
         guard var currentAsk = ask else { return }
         
         let wasLiked = currentAsk.userHasLiked ?? false
+        let previousLikeCount = currentAsk.likeCount
         
         // 樂觀更新
         currentAsk.userHasLiked = !wasLiked
+        currentAsk = Ask(
+            id: currentAsk.id,
+            userId: currentAsk.userId,
+            center: currentAsk.center,
+            radiusMeters: currentAsk.radiusMeters,
+            question: currentAsk.question,
+            mainImageUrl: currentAsk.mainImageUrl,
+            status: currentAsk.status,
+            likeCount: wasLiked ? previousLikeCount - 1 : previousLikeCount + 1,
+            viewCount: currentAsk.viewCount,
+            createdAt: currentAsk.createdAt,
+            updatedAt: currentAsk.updatedAt,
+            author: currentAsk.author,
+            images: currentAsk.images,
+            userHasLiked: !wasLiked
+        )
         ask = currentAsk
         
         do {
-            _ = try await replyRepository.toggleLikeForAsk(id: askId)
+            let response = try await replyRepository.toggleLikeForAsk(id: askId)
+            // 用伺服器回傳的計數更新
+            if var updatedAsk = ask {
+                updatedAsk = Ask(
+                    id: updatedAsk.id,
+                    userId: updatedAsk.userId,
+                    center: updatedAsk.center,
+                    radiusMeters: updatedAsk.radiusMeters,
+                    question: updatedAsk.question,
+                    mainImageUrl: updatedAsk.mainImageUrl,
+                    status: updatedAsk.status,
+                    likeCount: response.likeCount,
+                    viewCount: updatedAsk.viewCount,
+                    createdAt: updatedAsk.createdAt,
+                    updatedAt: updatedAsk.updatedAt,
+                    author: updatedAsk.author,
+                    images: updatedAsk.images,
+                    userHasLiked: response.action == "liked"
+                )
+                ask = updatedAsk
+            }
         } catch {
             // 回滾
-            currentAsk.userHasLiked = wasLiked
-            ask = currentAsk
+            ask = Ask(
+                id: currentAsk.id,
+                userId: currentAsk.userId,
+                center: currentAsk.center,
+                radiusMeters: currentAsk.radiusMeters,
+                question: currentAsk.question,
+                mainImageUrl: currentAsk.mainImageUrl,
+                status: currentAsk.status,
+                likeCount: previousLikeCount,
+                viewCount: currentAsk.viewCount,
+                createdAt: currentAsk.createdAt,
+                updatedAt: currentAsk.updatedAt,
+                author: currentAsk.author,
+                images: currentAsk.images,
+                userHasLiked: wasLiked
+            )
         }
     }
     
@@ -356,6 +430,64 @@ class AskDetailViewModel: ObservableObject {
             try await askRepository.deleteAsk(id: askId)
         } catch {
             errorMessage = "刪除失敗"
+        }
+    }
+    
+    func toggleReplyLike(replyId: String) async {
+        guard let index = replies.firstIndex(where: { $0.id == replyId }) else { return }
+        
+        let wasLiked = replies[index].userHasLiked ?? false
+        let previousCount = replies[index].likeCount
+        
+        // 樂觀更新
+        replies[index] = Reply(
+            id: replies[index].id,
+            recordId: replies[index].recordId,
+            askId: replies[index].askId,
+            userId: replies[index].userId,
+            content: replies[index].content,
+            isOnsite: replies[index].isOnsite,
+            likeCount: wasLiked ? previousCount - 1 : previousCount + 1,
+            createdAt: replies[index].createdAt,
+            author: replies[index].author,
+            images: replies[index].images,
+            userHasLiked: !wasLiked
+        )
+        
+        do {
+            let response = try await replyRepository.toggleLikeForReply(id: replyId)
+            if let idx = replies.firstIndex(where: { $0.id == replyId }) {
+                replies[idx] = Reply(
+                    id: replies[idx].id,
+                    recordId: replies[idx].recordId,
+                    askId: replies[idx].askId,
+                    userId: replies[idx].userId,
+                    content: replies[idx].content,
+                    isOnsite: replies[idx].isOnsite,
+                    likeCount: response.likeCount,
+                    createdAt: replies[idx].createdAt,
+                    author: replies[idx].author,
+                    images: replies[idx].images,
+                    userHasLiked: response.action == "liked"
+                )
+            }
+        } catch {
+            // 回滾
+            if let idx = replies.firstIndex(where: { $0.id == replyId }) {
+                replies[idx] = Reply(
+                    id: replies[idx].id,
+                    recordId: replies[idx].recordId,
+                    askId: replies[idx].askId,
+                    userId: replies[idx].userId,
+                    content: replies[idx].content,
+                    isOnsite: replies[idx].isOnsite,
+                    likeCount: previousCount,
+                    createdAt: replies[idx].createdAt,
+                    author: replies[idx].author,
+                    images: replies[idx].images,
+                    userHasLiked: wasLiked
+                )
+            }
         }
     }
 }

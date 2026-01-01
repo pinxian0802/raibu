@@ -153,11 +153,32 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
   // 取得每個回覆的圖片
   const repliesWithImages = await Promise.all(
     (replies || []).map(async (reply) => {
-      const { data: images } = await supabase
-        .from('image_media')
-        .select('id, original_public_url, thumbnail_public_url, display_order')
-        .eq('reply_id', reply.id)
-        .order('display_order');
+      // 取得回覆的圖片（含位置座標）
+      let images = [];
+      const { data: imagesWithLocation, error: imgRpcError } = await supabase.rpc('get_reply_images_with_location', {
+        p_reply_id: reply.id
+      });
+      
+      if (imgRpcError) {
+        // RPC 不存在，使用普通查詢
+        const { data: basicImages } = await supabase
+          .from('image_media')
+          .select('id, original_public_url, thumbnail_public_url, display_order')
+          .eq('reply_id', reply.id)
+          .order('display_order');
+        images = basicImages || [];
+      } else {
+        images = (imagesWithLocation || []).map(img => ({
+          id: img.id,
+          original_public_url: img.original_public_url,
+          thumbnail_public_url: img.thumbnail_public_url,
+          display_order: img.display_order,
+          location: (img.lng !== null && img.lat !== null) ? {
+            lng: img.lng,
+            lat: img.lat
+          } : null
+        }));
+      }
 
       // 檢查當前用戶是否已點讚
       let userHasLiked = false;
@@ -173,8 +194,12 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
 
       return {
         id: reply.id,
+        record_id: reply.record_id,
+        ask_id: reply.ask_id,
+        user_id: reply.user_id,
         content: reply.content,
-        like_count: reply.like_count,
+        is_onsite: reply.is_onsite || false,
+        like_count: reply.like_count || 0,
         created_at: reply.created_at,
         author: reply.users,
         images: images || [],

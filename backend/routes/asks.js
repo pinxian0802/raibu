@@ -193,26 +193,82 @@ router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const currentUserId = req.user?.id;
 
-  const { data: ask, error } = await supabase
-    .from('asks')
-    .select(`
-      *,
-      users:user_id (id, display_name, avatar_url)
-    `)
-    .eq('id', id)
-    .single();
+  // 使用 RPC 取得包含座標的詢問資料
+  const { data: askWithCoords, error: rpcError } = await supabase.rpc('get_ask_detail_with_coords', {
+    p_ask_id: id,
+  });
 
-  if (error || !ask) {
-    throw Errors.notFound('找不到此詢問');
+  let ask;
+  let center = null;
+
+  if (rpcError || !askWithCoords || askWithCoords.length === 0) {
+    // RPC 不存在或失敗，使用基本查詢
+    console.warn('RPC not available, using basic query');
+    const { data: basicAsk, error: basicError } = await supabase
+      .from('asks')
+      .select(`
+        *,
+        users:user_id (id, display_name, avatar_url)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (basicError || !basicAsk) {
+      throw Errors.notFound('找不到此詢問');
+    }
+
+    ask = basicAsk;
+    // 沒有 RPC 無法取得座標
+    center = { lat: 0, lng: 0 };
+  } else {
+    const askData = askWithCoords[0];
+    center = {
+      lat: askData.lat,
+      lng: askData.lng,
+    };
+
+    // 取得使用者資訊
+    const { data: userData } = await supabase
+      .from('users')
+      .select('id, display_name, avatar_url')
+      .eq('id', askData.user_id)
+      .single();
+
+    ask = {
+      ...askData,
+      users: userData,
+    };
   }
 
-  // 取得關聯圖片
-  const { data: images } = await supabase
-    .from('image_media')
-    .select('id, original_public_url, thumbnail_public_url, display_order')
-    .eq('ask_id', id)
-    .eq('status', 'COMPLETED')
-    .order('display_order');
+  // 取得關聯圖片（含位置座標）
+  let images = [];
+  const { data: imagesWithLocation, error: imgRpcError } = await supabase.rpc('get_ask_images_with_location', {
+    p_ask_id: id
+  });
+  
+  if (imgRpcError) {
+    // RPC 不存在，使用普通查詢（不含 location）
+    console.warn('RPC get_ask_images_with_location not available, using basic query');
+    const { data: basicImages } = await supabase
+      .from('image_media')
+      .select('id, original_public_url, thumbnail_public_url, display_order')
+      .eq('ask_id', id)
+      .eq('status', 'COMPLETED')
+      .order('display_order');
+    images = basicImages || [];
+  } else {
+    // 轉換 RPC 回傳格式
+    images = (imagesWithLocation || []).map(img => ({
+      id: img.id,
+      original_public_url: img.original_public_url,
+      thumbnail_public_url: img.thumbnail_public_url,
+      display_order: img.display_order,
+      location: (img.lng !== null && img.lat !== null) ? {
+        lng: img.lng,
+        lat: img.lat
+      } : null
+    }));
+  }
 
   // 檢查是否已點讚
   let userHasLiked = false;
@@ -227,7 +283,17 @@ router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
   }
 
   res.json({
-    ...ask,
+    id: ask.id,
+    user_id: ask.user_id,
+    center: center,
+    radius_meters: ask.radius_meters,
+    question: ask.question,
+    main_image_url: ask.main_image_url,
+    status: ask.status,
+    like_count: ask.like_count || 0,
+    view_count: ask.view_count || 0,
+    created_at: ask.created_at,
+    updated_at: ask.updated_at,
     author: ask.users,
     images: images || [],
     user_has_liked: userHasLiked,

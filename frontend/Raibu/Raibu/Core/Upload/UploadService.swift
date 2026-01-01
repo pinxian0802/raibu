@@ -121,7 +121,8 @@ class UploadService: ObservableObject {
                 thumbnailPublicUrl: cred.thumbnailPublicUrl,
                 location: photo.location,
                 capturedAt: photo.capturedAt,
-                displayOrder: index
+                displayOrder: index,
+                address: photo.address
             )
         }
     }
@@ -185,6 +186,7 @@ struct SelectedPhoto: Identifiable, Equatable {
     let fileSize: Int
     let location: Coordinate?
     let capturedAt: Date?
+    var address: String?  // 逆向地理編碼後的地址
     
     static func == (lhs: SelectedPhoto, rhs: SelectedPhoto) -> Bool {
         lhs.id == rhs.id
@@ -199,6 +201,7 @@ struct UploadedImage {
     let location: Coordinate?
     let capturedAt: Date?
     let displayOrder: Int
+    let address: String?
     
     /// 轉換為 API 請求格式
     func toCreateRequest() -> CreateImageRequest {
@@ -208,7 +211,8 @@ struct UploadedImage {
             thumbnailPublicUrl: thumbnailPublicUrl,
             location: location,
             capturedAt: capturedAt,
-            displayOrder: displayOrder
+            displayOrder: displayOrder,
+            address: address
         )
     }
 }

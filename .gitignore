@@ -8,3 +8,11 @@ backend/.env
 
 # 日誌檔案
 *.log
+
+# macOS 系統檔案
+.DS_Store
+**/.DS_Store
+
+# Xcode 用戶資料
+*.xcuserstate
+xcuserdata/

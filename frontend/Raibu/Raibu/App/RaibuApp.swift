@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct RaibuApp: App {
     @StateObject private var container = DIContainer()
+    @StateObject private var navigationCoordinator = NavigationCoordinator()
     
     var body: some Scene {
         WindowGroup {
@@ -17,6 +18,7 @@ struct RaibuApp: App {
                 .environmentObject(container)
                 .environmentObject(container.authService)
                 .environmentObject(container.locationManager)
+                .environmentObject(navigationCoordinator)
         }
     }
 }
@@ -44,10 +46,10 @@ struct ContentView: View {
 
 // MARK: - Main Tab View
 struct MainTabView: View {
-    @State private var selectedTab = 0
+    @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $navigationCoordinator.selectedTab) {
             MapContainerView()
                 .tabItem {
                     Image(systemName: "map")

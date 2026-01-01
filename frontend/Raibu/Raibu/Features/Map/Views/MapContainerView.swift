@@ -20,20 +20,17 @@ struct MapContainerView: View {
 /// 實際地圖內容（使用 @StateObject 正確觀察 ViewModel）
 struct MapContentView: View {
     let container: DIContainer
+    @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @StateObject private var viewModel: MapViewModel
     @StateObject private var toastManager = ToastManager()
     
     @State private var searchText = ""
     @State private var showCreateRecord = false
-    @State private var showCreateAsk = false
-    @State private var longPressLocation: CLLocationCoordinate2D?
+    @State private var createAskLocation: CreateAskLocation?
     
     // Sheet 控制
-    @State private var showDetailSheet = false
-    @State private var showClusterListSheet = false
-    @State private var selectedRecordId: String?
-    @State private var selectedAskId: String?
-    @State private var clusterListItems: [ClusterItem] = []
+    @State private var selectedDetailItem: DetailSheetItem?
+    @State private var clusterSheetData: ClusterSheetData?
     
     init(container: DIContainer) {
         self.container = container
@@ -56,17 +53,34 @@ struct MapContentView: View {
                 Spacer()
                 bottomControls
             }
-            
-            // 載入指示器
-            if viewModel.isLoading {
-                loadingOverlay
+        }
+        .sheet(item: $selectedDetailItem) { item in
+            switch item {
+            case .record(let recordId, let imageIndex):
+                RecordDetailSheetView(
+                    recordId: recordId,
+                    initialImageIndex: imageIndex,
+                    recordRepository: container.recordRepository,
+                    replyRepository: container.replyRepository
+                )
+                .environmentObject(navigationCoordinator)
+            case .ask(let askId):
+                AskDetailSheetView(
+                    askId: askId,
+                    askRepository: container.askRepository,
+                    replyRepository: container.replyRepository
+                )
+                .environmentObject(navigationCoordinator)
             }
         }
-        .sheet(isPresented: $showDetailSheet) {
-            detailSheet
-        }
-        .sheet(isPresented: $showClusterListSheet) {
-            clusterListSheet
+        .sheet(item: $clusterSheetData) { data in
+            ClusterGridSheetView(
+                items: data.items,
+                recordRepository: container.recordRepository,
+                replyRepository: container.replyRepository
+            )
+            .environmentObject(navigationCoordinator)
+            .environmentObject(container)
         }
         .sheet(isPresented: $showCreateRecord, onDismiss: {
             // 刷新地圖資料以顯示新建立的紀錄
@@ -79,21 +93,38 @@ struct MapContentView: View {
                 recordRepository: container.recordRepository
             )
         }
-        .sheet(isPresented: $showCreateAsk, onDismiss: {
+        .sheet(item: $createAskLocation, onDismiss: {
             // 刷新地圖資料以顯示新建立的詢問
             Task {
                 await viewModel.fetchDataForCurrentRegion()
             }
-        }) {
-            if let location = longPressLocation {
-                CreateAskFullView(
-                    initialLocation: location,
-                    uploadService: container.uploadService,
-                    askRepository: container.askRepository
-                )
-            }
+        }) { location in
+            CreateAskFullView(
+                initialLocation: location.coordinate,
+                uploadService: container.uploadService,
+                askRepository: container.askRepository
+            )
+            .environmentObject(container)
         }
         .toastContainer(toastManager)
+        .onChange(of: navigationCoordinator.targetCoordinate) { newCoordinate in
+            // 回應導航協調器的跳轉請求
+            if let coordinate = newCoordinate {
+                // 先切換模式（如果有指定）
+                if let targetMode = navigationCoordinator.targetMapMode {
+                    viewModel.switchMode(to: targetMode)
+                }
+                
+                // 移動到目標座標
+                withAnimation {
+                    viewModel.region = MKCoordinateRegion(
+                        center: coordinate.clLocationCoordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
+                    )
+                }
+                navigationCoordinator.clearTarget()
+            }
+        }
     }
     
     // MARK: - Map View
@@ -108,14 +139,11 @@ struct MapContentView: View {
             },
             onLongPress: { coordinate in
                 if viewModel.currentMode == .ask {
-                    longPressLocation = coordinate
-                    showCreateAsk = true
+                    createAskLocation = CreateAskLocation(coordinate: coordinate)
                 }
             },
-            onRegionChanged: {
-                Task {
-                    await viewModel.fetchDataForCurrentRegion()
-                }
+            onRegionChanged: { mapSize in
+                viewModel.onRegionChanged(viewModel.region, mapSize: mapSize)
             }
         )
         .ignoresSafeArea()
@@ -151,8 +179,7 @@ struct MapContentView: View {
             if items.count == 1 {
                 handleSingleItemTap(items[0])
             } else {
-                clusterListItems = items
-                showClusterListSheet = true
+                clusterSheetData = ClusterSheetData(items: items)
             }
         }
     }
@@ -160,14 +187,11 @@ struct MapContentView: View {
     private func handleSingleItemTap(_ item: ClusterItem) {
         switch item {
         case .recordImage(let image):
-            selectedRecordId = image.recordId
-            selectedAskId = nil
-            showDetailSheet = true
+            // 傳遞 displayOrder 作為初始圖片索引
+            selectedDetailItem = .record(id: image.recordId, imageIndex: image.displayOrder)
             
         case .ask(let ask):
-            selectedAskId = ask.id
-            selectedRecordId = nil
-            showDetailSheet = true
+            selectedDetailItem = .ask(id: ask.id)
         }
     }
     
@@ -297,37 +321,34 @@ struct MapContentView: View {
                     .shadow(color: Color.black.opacity(0.15), radius: 10)
             )
     }
+}
+
+// MARK: - Detail Sheet Item
+
+enum DetailSheetItem: Identifiable {
+    case record(id: String, imageIndex: Int)
+    case ask(id: String)
     
-    // MARK: - Sheets
-    
-    @ViewBuilder
-    private var detailSheet: some View {
-        if let recordId = selectedRecordId {
-            RecordDetailSheetView(
-                recordId: recordId,
-                recordRepository: container.recordRepository,
-                replyRepository: container.replyRepository
-            )
-        } else if let askId = selectedAskId {
-            AskDetailSheetView(
-                askId: askId,
-                askRepository: container.askRepository,
-                replyRepository: container.replyRepository
-            )
+    var id: String {
+        switch self {
+        case .record(let id, let imageIndex): return "record-\(id)-\(imageIndex)"
+        case .ask(let id): return "ask-\(id)"
         }
     }
-    
-    private var clusterListSheet: some View {
-        ClusterListView(
-            items: clusterListItems,
-            onItemSelected: { item in
-                showClusterListSheet = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    handleSingleItemTap(item)
-                }
-            }
-        )
-    }
+}
+
+// MARK: - Create Ask Location
+
+struct CreateAskLocation: Identifiable {
+    let id = UUID()
+    let coordinate: CLLocationCoordinate2D
+}
+
+// MARK: - Cluster Sheet Data
+
+struct ClusterSheetData: Identifiable {
+    let id = UUID()
+    let items: [ClusterItem]
 }
 
 // MARK: - Map UIViewRepresentable (用於長按座標轉換)
@@ -338,7 +359,7 @@ struct MapViewRepresentable: UIViewRepresentable {
     let currentMode: MapMode
     let onClusterTapped: (ClusterResult) -> Void
     let onLongPress: (CLLocationCoordinate2D) -> Void
-    let onRegionChanged: () -> Void
+    let onRegionChanged: (CGSize) -> Void
     
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -364,13 +385,33 @@ struct MapViewRepresentable: UIViewRepresentable {
             mapView.setRegion(region, animated: true)
         }
         
-        // 更新標註
-        mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
+        // 差異比對更新標註（避免閃爍）
+        let existingAnnotations = mapView.annotations.compactMap { $0 as? ClusterAnnotation }
+        let existingIds = Set(existingAnnotations.map { $0.clusterIdentifier })
+        let newIds = Set(clusters.map { clusterIdentifier(for: $0) })
         
-        for cluster in clusters {
-            let annotation = ClusterAnnotation(cluster: cluster, mode: currentMode)
-            mapView.addAnnotation(annotation)
+        // 移除不再存在的標註
+        let toRemove = existingAnnotations.filter { !newIds.contains($0.clusterIdentifier) }
+        if !toRemove.isEmpty {
+            mapView.removeAnnotations(toRemove)
         }
+        
+        // 加入新的標註
+        let existingClusterIds = existingIds
+        for cluster in clusters {
+            let id = clusterIdentifier(for: cluster)
+            if !existingClusterIds.contains(id) {
+                let annotation = ClusterAnnotation(cluster: cluster, mode: currentMode, identifier: id)
+                mapView.addAnnotation(annotation)
+            }
+        }
+    }
+    
+    /// 產生群集的唯一識別 ID
+    private func clusterIdentifier(for cluster: ClusterResult) -> String {
+        // 使用所有項目的 ID 排序後組合，確保相同內容的群集有相同的 ID
+        let itemIds = cluster.items.map { $0.id }.sorted().joined(separator: "_")
+        return itemIds
     }
     
     func makeCoordinator() -> Coordinator {
@@ -395,13 +436,15 @@ struct MapViewRepresentable: UIViewRepresentable {
         
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             parent.region = mapView.region
-            parent.onRegionChanged()
+            parent.onRegionChanged(mapView.bounds.size)
         }
         
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             guard let clusterAnnotation = annotation as? ClusterAnnotation else { return nil }
             
-            let identifier = "ClusterAnnotation"
+            let cluster = clusterAnnotation.cluster
+            let identifier = clusterAnnotation.clusterIdentifier
+            
             var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
             
             if annotationView == nil {
@@ -412,19 +455,70 @@ struct MapViewRepresentable: UIViewRepresentable {
             annotationView?.annotation = annotation
             
             // 設定圖示
-            let cluster = clusterAnnotation.cluster
             if cluster.isSingle {
                 if case .ask = cluster.items[0] {
                     annotationView?.image = createAskIcon()
                 } else if case .recordImage(let image) = cluster.items[0] {
-                    // 使用縮圖 (簡化版：使用系統圖示)
-                    annotationView?.image = createRecordIcon()
+                    // 直接載入縮圖（無 placeholder）
+                    loadThumbnail(for: annotationView, urlString: image.thumbnailPublicUrl, badgeCount: nil)
                 }
             } else {
-                annotationView?.image = createClusterIcon(count: cluster.count, mode: clusterAnnotation.mode)
+                // 群聚：取得最新的圖片 URL（假設第一個是最新的，或需要排序）
+                if clusterAnnotation.mode == .record {
+                    // 找到群聚中的第一張圖片（作為代表）
+                    if let firstRecordImage = cluster.items.compactMap({ item -> MapRecordImage? in
+                        if case .recordImage(let image) = item { return image }
+                        return nil
+                    }).first {
+                        loadThumbnail(for: annotationView, urlString: firstRecordImage.thumbnailPublicUrl, badgeCount: cluster.count)
+                    }
+                } else {
+                    // Ask 模式的群聚仍使用數字圖示
+                    annotationView?.image = createClusterIcon(count: cluster.count, mode: clusterAnnotation.mode)
+                }
             }
             
             return annotationView
+        }
+        
+        // MARK: - Image Cache
+        
+        /// 圖片快取
+        private static let imageCache = NSCache<NSString, UIImage>()
+        
+        /// 非同步載入縮圖（帶快取）
+        private func loadThumbnail(for annotationView: MKAnnotationView?, urlString: String, badgeCount: Int?) {
+            guard let url = URL(string: urlString) else { return }
+            
+            let cacheKey = "\(urlString)_\(badgeCount ?? 0)" as NSString
+            
+            // 檢查快取
+            if let cachedImage = Self.imageCache.object(forKey: cacheKey) {
+                annotationView?.image = cachedImage
+                return
+            }
+            
+            // 使用帶快取策略的請求
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
+            
+            URLSession.shared.dataTask(with: request) { [weak annotationView] data, _, _ in
+                guard let data = data, let originalImage = UIImage(data: data) else { return }
+                
+                let thumbnailImage: UIImage
+                if let count = badgeCount {
+                    thumbnailImage = self.createThumbnailWithBadge(from: originalImage, count: count)
+                } else {
+                    thumbnailImage = self.createThumbnailIcon(from: originalImage)
+                }
+                
+                // 儲存到快取
+                Self.imageCache.setObject(thumbnailImage, forKey: cacheKey)
+                
+                DispatchQueue.main.async {
+                    annotationView?.image = thumbnailImage
+                }
+            }.resume()
         }
         
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
@@ -435,39 +529,145 @@ struct MapViewRepresentable: UIViewRepresentable {
         
         // MARK: - Icon Creation
         
-        private func createRecordIcon() -> UIImage {
-            let size = CGSize(width: 44, height: 44)
+        /// 縮圖 icon 尺寸（與群聚演算法一致）
+        private var iconSize: CGFloat { ClusteringService.markerIconSize }
+        
+        /// 圓角半徑
+        private var cornerRadius: CGFloat { 12 }
+        
+        /// 從圖片建立正方形縮圖 icon（帶白色邊框和圓角）
+        private func createThumbnailIcon(from image: UIImage) -> UIImage {
+            let size = CGSize(width: iconSize, height: iconSize)
+            let borderWidth: CGFloat = 3
             let renderer = UIGraphicsImageRenderer(size: size)
+            
             return renderer.image { context in
-                // 白色邊框圓形
+                let rect = CGRect(origin: .zero, size: size)
+                let innerRect = rect.insetBy(dx: borderWidth, dy: borderWidth)
+                
+                // 繪製白色邊框背景（圓角正方形）
+                let borderPath = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
                 UIColor.white.setFill()
-                context.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
+                borderPath.fill()
                 
-                // 藍色填充
-                UIColor.systemBlue.setFill()
-                context.cgContext.fillEllipse(in: CGRect(x: 2, y: 2, width: 40, height: 40))
+                // 裁切成圓角正方形並繪製圖片
+                let clipPath = UIBezierPath(roundedRect: innerRect, cornerRadius: cornerRadius - borderWidth)
+                clipPath.addClip()
                 
-                // 相機圖示
-                let iconRect = CGRect(x: 12, y: 12, width: 20, height: 20)
-                let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-                if let icon = UIImage(systemName: "camera.fill", withConfiguration: config) {
-                    icon.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
+                // 計算裁切區域（取中央正方形）
+                let imageSize = image.size
+                let minSide = min(imageSize.width, imageSize.height)
+                let cropRect = CGRect(
+                    x: (imageSize.width - minSide) / 2,
+                    y: (imageSize.height - minSide) / 2,
+                    width: minSide,
+                    height: minSide
+                )
+                
+                if let cgImage = image.cgImage?.cropping(to: cropRect) {
+                    UIImage(cgImage: cgImage).draw(in: innerRect)
+                } else {
+                    image.draw(in: innerRect)
                 }
             }
         }
         
+        /// 從圖片建立帶數量 badge 的縮圖（右上角顯示群聚數量）
+        private func createThumbnailWithBadge(from image: UIImage, count: Int) -> UIImage {
+            let size = CGSize(width: iconSize, height: iconSize)
+            let borderWidth: CGFloat = 3
+            let badgeSize: CGFloat = 28
+            let renderer = UIGraphicsImageRenderer(size: size)
+            
+            return renderer.image { context in
+                let rect = CGRect(origin: .zero, size: size)
+                let innerRect = rect.insetBy(dx: borderWidth, dy: borderWidth)
+                
+                // 繪製白色邊框背景（圓角正方形）
+                let borderPath = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
+                UIColor.white.setFill()
+                borderPath.fill()
+                
+                // 儲存狀態（用於後續繪製 badge）
+                context.cgContext.saveGState()
+                
+                // 裁切成圓角正方形並繪製圖片
+                let clipPath = UIBezierPath(roundedRect: innerRect, cornerRadius: cornerRadius - borderWidth)
+                clipPath.addClip()
+                
+                // 計算裁切區域（取中央正方形）
+                let imageSize = image.size
+                let minSide = min(imageSize.width, imageSize.height)
+                let cropRect = CGRect(
+                    x: (imageSize.width - minSide) / 2,
+                    y: (imageSize.height - minSide) / 2,
+                    width: minSide,
+                    height: minSide
+                )
+                
+                if let cgImage = image.cgImage?.cropping(to: cropRect) {
+                    UIImage(cgImage: cgImage).draw(in: innerRect)
+                } else {
+                    image.draw(in: innerRect)
+                }
+                
+                // 恢復狀態以繪製 badge
+                context.cgContext.restoreGState()
+                
+                // 繪製右上角的數量 badge
+                let badgeRect = CGRect(
+                    x: size.width - badgeSize + 4,
+                    y: -4,
+                    width: badgeSize,
+                    height: badgeSize
+                )
+                
+                // Badge 背景（藍色圓形 + 白色邊框）
+                UIColor.white.setFill()
+                context.cgContext.fillEllipse(in: badgeRect)
+                
+                let innerBadgeRect = badgeRect.insetBy(dx: 2, dy: 2)
+                UIColor.systemBlue.setFill()
+                context.cgContext.fillEllipse(in: innerBadgeRect)
+                
+                // Badge 數字
+                let text = "\(count)" as NSString
+                let fontSize: CGFloat = count >= 100 ? 10 : (count >= 10 ? 12 : 14)
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.boldSystemFont(ofSize: fontSize),
+                    .foregroundColor: UIColor.white
+                ]
+                let textSize = text.size(withAttributes: attributes)
+                let textRect = CGRect(
+                    x: badgeRect.midX - textSize.width / 2,
+                    y: badgeRect.midY - textSize.height / 2,
+                    width: textSize.width,
+                    height: textSize.height
+                )
+                text.draw(in: textRect, withAttributes: attributes)
+            }
+        }
+        
         private func createAskIcon() -> UIImage {
-            let size = CGSize(width: 44, height: 44)
+            let size = CGSize(width: iconSize, height: iconSize)
+            let borderWidth: CGFloat = 3
             let renderer = UIGraphicsImageRenderer(size: size)
             return renderer.image { context in
                 UIColor.white.setFill()
                 context.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
                 
                 UIColor.orange.setFill()
-                context.cgContext.fillEllipse(in: CGRect(x: 2, y: 2, width: 40, height: 40))
+                context.cgContext.fillEllipse(in: CGRect(x: borderWidth, y: borderWidth, width: iconSize - borderWidth * 2, height: iconSize - borderWidth * 2))
                 
-                let iconRect = CGRect(x: 12, y: 12, width: 20, height: 20)
-                let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .bold)
+                // 置中繪製問號圖示
+                let symbolSize: CGFloat = 40
+                let iconRect = CGRect(
+                    x: (iconSize - symbolSize) / 2,
+                    y: (iconSize - symbolSize) / 2,
+                    width: symbolSize,
+                    height: symbolSize
+                )
+                let config = UIImage.SymbolConfiguration(pointSize: 32, weight: .bold)
                 if let icon = UIImage(systemName: "questionmark", withConfiguration: config) {
                     icon.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
                 }
@@ -475,7 +675,8 @@ struct MapViewRepresentable: UIViewRepresentable {
         }
         
         private func createClusterIcon(count: Int, mode: MapMode) -> UIImage {
-            let size = CGSize(width: 44, height: 44)
+            let size = CGSize(width: iconSize, height: iconSize)
+            let borderWidth: CGFloat = 3
             let renderer = UIGraphicsImageRenderer(size: size)
             return renderer.image { context in
                 UIColor.white.setFill()
@@ -483,12 +684,13 @@ struct MapViewRepresentable: UIViewRepresentable {
                 
                 let color = mode == .record ? UIColor.systemBlue : UIColor.orange
                 color.setFill()
-                context.cgContext.fillEllipse(in: CGRect(x: 2, y: 2, width: 40, height: 40))
+                context.cgContext.fillEllipse(in: CGRect(x: borderWidth, y: borderWidth, width: iconSize - borderWidth * 2, height: iconSize - borderWidth * 2))
                 
-                // 繪製數字
+                // 繪製數字（置中）
                 let text = "\(count)" as NSString
+                let fontSize: CGFloat = count >= 100 ? 20 : (count >= 10 ? 24 : 28)
                 let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.boldSystemFont(ofSize: 16),
+                    .font: UIFont.boldSystemFont(ofSize: fontSize),
                     .foregroundColor: UIColor.white
                 ]
                 let textSize = text.size(withAttributes: attributes)
@@ -509,14 +711,16 @@ struct MapViewRepresentable: UIViewRepresentable {
 class ClusterAnnotation: NSObject, MKAnnotation {
     let cluster: ClusterResult
     let mode: MapMode
+    let clusterIdentifier: String
     
     var coordinate: CLLocationCoordinate2D {
         cluster.center
     }
     
-    init(cluster: ClusterResult, mode: MapMode) {
+    init(cluster: ClusterResult, mode: MapMode, identifier: String) {
         self.cluster = cluster
         self.mode = mode
+        self.clusterIdentifier = identifier
     }
 }
 

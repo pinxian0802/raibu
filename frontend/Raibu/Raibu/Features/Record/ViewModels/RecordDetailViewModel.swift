@@ -14,7 +14,7 @@ class RecordDetailViewModel: ObservableObject {
     
     @Published var record: Record?
     @Published var replies: [Reply] = []
-    @Published var isLoading = false
+    @Published var isLoading = true
     @Published var errorMessage: String?
     
     // 互動
@@ -89,14 +89,79 @@ class RecordDetailViewModel: ObservableObject {
             let response = try await replyRepository.toggleLikeForRecord(id: recordId)
             
             await MainActor.run {
-                isLiked = response.liked
-                likeCount = response.newCount
+                isLiked = response.action == "liked"
+                likeCount = response.likeCount
             }
         } catch {
             // 恢復原狀態
             await MainActor.run {
                 isLiked.toggle()
                 likeCount += isLiked ? 1 : -1
+            }
+        }
+    }
+    
+    /// 切換回覆點讚狀態
+    func toggleReplyLike(replyId: String) async {
+        guard let index = replies.firstIndex(where: { $0.id == replyId }) else { return }
+        
+        let wasLiked = replies[index].userHasLiked ?? false
+        let previousCount = replies[index].likeCount
+        
+        // 樂觀更新
+        await MainActor.run {
+            replies[index] = Reply(
+                id: replies[index].id,
+                recordId: replies[index].recordId,
+                askId: replies[index].askId,
+                userId: replies[index].userId,
+                content: replies[index].content,
+                isOnsite: replies[index].isOnsite,
+                likeCount: wasLiked ? previousCount - 1 : previousCount + 1,
+                createdAt: replies[index].createdAt,
+                author: replies[index].author,
+                images: replies[index].images,
+                userHasLiked: !wasLiked
+            )
+        }
+        
+        do {
+            let response = try await replyRepository.toggleLikeForReply(id: replyId)
+            await MainActor.run {
+                if let idx = replies.firstIndex(where: { $0.id == replyId }) {
+                    replies[idx] = Reply(
+                        id: replies[idx].id,
+                        recordId: replies[idx].recordId,
+                        askId: replies[idx].askId,
+                        userId: replies[idx].userId,
+                        content: replies[idx].content,
+                        isOnsite: replies[idx].isOnsite,
+                        likeCount: response.likeCount,
+                        createdAt: replies[idx].createdAt,
+                        author: replies[idx].author,
+                        images: replies[idx].images,
+                        userHasLiked: response.action == "liked"
+                    )
+                }
+            }
+        } catch {
+            // 回滾
+            await MainActor.run {
+                if let idx = replies.firstIndex(where: { $0.id == replyId }) {
+                    replies[idx] = Reply(
+                        id: replies[idx].id,
+                        recordId: replies[idx].recordId,
+                        askId: replies[idx].askId,
+                        userId: replies[idx].userId,
+                        content: replies[idx].content,
+                        isOnsite: replies[idx].isOnsite,
+                        likeCount: previousCount,
+                        createdAt: replies[idx].createdAt,
+                        author: replies[idx].author,
+                        images: replies[idx].images,
+                        userHasLiked: wasLiked
+                    )
+                }
             }
         }
     }

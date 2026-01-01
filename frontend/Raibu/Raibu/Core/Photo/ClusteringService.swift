@@ -51,8 +51,12 @@ enum ClusterItem: Identifiable {
 /// 群集演算法服務
 class ClusteringService {
     
-    /// 螢幕像素半徑門檻 (R)
-    private let pixelThreshold: CGFloat = 40
+    /// 標記圖示尺寸（用於碰撞檢測）
+    /// 當兩個標記在螢幕上的距離小於此值時，它們會重疊並觸發群聚
+    static let markerIconSize: CGFloat = 88
+    
+    /// 群聚觸發門檻：當兩個標記中心距離小於圖示尺寸時，代表互相碰撞
+    private var pixelThreshold: CGFloat { Self.markerIconSize }
     
     // MARK: - Public Methods
     
@@ -111,9 +115,9 @@ class ClusteringService {
     /// 處理群集點擊
     /// - Parameters:
     ///   - cluster: 被點擊的群集
-    ///   - currentZoom: 當前縮放等級
-    ///   - maxZoom: 最大縮放等級
-    ///   - currentSpanDelta: 當前地圖 span 的 latitudeDelta
+    ///   - currentZoom: 當前縮放等級（目前未使用，保留參數以維持 API 相容性）
+    ///   - maxZoom: 最大縮放等級（目前未使用，保留參數以維持 API 相容性）
+    ///   - currentSpanDelta: 當前地圖 span 的 latitudeDelta（目前未使用，保留參數以維持 API 相容性）
     /// - Returns: 應執行的動作
     func handleClusterTap(
         cluster: ClusterResult,
@@ -121,21 +125,8 @@ class ClusteringService {
         maxZoom: Double = 18,
         currentSpanDelta: Double = 0
     ) -> ClusterAction {
-        if cluster.isSingle {
-            // 單一項目直接返回
-            return .showBottomSheet(items: cluster.items)
-        }
-        
-        // 如果 span 已經很小（非常接近地圖），或達到最大縮放，顯示列表
-        let isAtMaxZoom = currentZoom >= maxZoom || currentSpanDelta < 0.0005
-        
-        if !isAtMaxZoom {
-            // 尚未達最大縮放 -> 自動放大
-            return .zoomIn(center: cluster.center)
-        } else {
-            // 已達最大縮放 -> 顯示列表
-            return .showBottomSheet(items: cluster.items)
-        }
+        // 無論是單一項目還是群集，直接顯示 bottom sheet
+        return .showBottomSheet(items: cluster.items)
     }
     
     // MARK: - Private Methods

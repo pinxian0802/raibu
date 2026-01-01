@@ -36,7 +36,8 @@ CREATE OR REPLACE FUNCTION update_image_with_location(
   p_lng DOUBLE PRECISION,
   p_lat DOUBLE PRECISION,
   p_captured_at TIMESTAMPTZ,
-  p_display_order INTEGER
+  p_display_order INTEGER,
+  p_address TEXT DEFAULT NULL
 )
 RETURNS VOID AS $$
 BEGIN
@@ -50,7 +51,8 @@ BEGIN
       ELSE NULL
     END,
     captured_at = p_captured_at,
-    display_order = p_display_order
+    display_order = p_display_order,
+    address = p_address
   WHERE id = p_image_id;
 END;
 $$ LANGUAGE plpgsql;
@@ -87,6 +89,94 @@ BEGIN
       im.location,
       ST_MakeEnvelope(p_min_lng, p_min_lat, p_max_lng, p_max_lat, 4326)
     );
+END;
+$$ LANGUAGE plpgsql;
+
+-- 3b. 取得單一紀錄的圖片列表（含座標）
+CREATE OR REPLACE FUNCTION get_record_images_with_location(
+  p_record_id UUID
+)
+RETURNS TABLE (
+  id UUID,
+  original_public_url TEXT,
+  thumbnail_public_url TEXT,
+  lng DOUBLE PRECISION,
+  lat DOUBLE PRECISION,
+  captured_at TIMESTAMPTZ,
+  display_order INTEGER,
+  address TEXT
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    im.id,
+    im.original_public_url,
+    im.thumbnail_public_url,
+    ST_X(im.location) AS lng,
+    ST_Y(im.location) AS lat,
+    im.captured_at,
+    im.display_order,
+    im.address
+  FROM image_media im
+  WHERE im.record_id = p_record_id
+    AND im.status = 'COMPLETED'
+  ORDER BY im.display_order;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 3c. 取得單一詢問的圖片列表（含座標）
+CREATE OR REPLACE FUNCTION get_ask_images_with_location(
+  p_ask_id UUID
+)
+RETURNS TABLE (
+  id UUID,
+  original_public_url TEXT,
+  thumbnail_public_url TEXT,
+  lng DOUBLE PRECISION,
+  lat DOUBLE PRECISION,
+  display_order INTEGER
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    im.id,
+    im.original_public_url,
+    im.thumbnail_public_url,
+    ST_X(im.location) AS lng,
+    ST_Y(im.location) AS lat,
+    im.display_order
+  FROM image_media im
+  WHERE im.ask_id = p_ask_id
+    AND im.status = 'COMPLETED'
+  ORDER BY im.display_order;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 3d. 取得單一回覆的圖片列表（含座標）
+CREATE OR REPLACE FUNCTION get_reply_images_with_location(
+  p_reply_id UUID
+)
+RETURNS TABLE (
+  id UUID,
+  original_public_url TEXT,
+  thumbnail_public_url TEXT,
+  lng DOUBLE PRECISION,
+  lat DOUBLE PRECISION,
+  display_order INTEGER
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    im.id,
+    im.original_public_url,
+    im.thumbnail_public_url,
+    ST_X(im.location) AS lng,
+    ST_Y(im.location) AS lat,
+    im.display_order
+  FROM image_media im
+  WHERE im.reply_id = p_reply_id
+    AND im.status = 'COMPLETED'
+  ORDER BY im.display_order;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -161,6 +251,44 @@ BEGIN
   FROM asks a
   WHERE a.user_id = p_user_id
   ORDER BY a.created_at DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 4c. 取得單一詢問標點詳情 (含座標)
+CREATE OR REPLACE FUNCTION get_ask_detail_with_coords(
+  p_ask_id UUID
+)
+RETURNS TABLE (
+  id UUID,
+  user_id UUID,
+  lng DOUBLE PRECISION,
+  lat DOUBLE PRECISION,
+  radius_meters INTEGER,
+  question TEXT,
+  main_image_url TEXT,
+  status TEXT,
+  like_count INTEGER,
+  view_count INTEGER,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    a.id,
+    a.user_id,
+    ST_X(a.center) AS lng,
+    ST_Y(a.center) AS lat,
+    a.radius_meters,
+    a.question,
+    a.main_image_url,
+    a.status,
+    a.like_count,
+    a.view_count,
+    a.created_at,
+    a.updated_at
+  FROM asks a
+  WHERE a.id = p_ask_id;
 END;
 $$ LANGUAGE plpgsql;
 

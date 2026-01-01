@@ -37,24 +37,41 @@ router.get('/me', requireAuth, asyncHandler(async (req, res) => {
   }
 
   // 計算統計資料
-  const [recordsCount, asksCount] = await Promise.all([
+  const [recordsResult, asksResult, recordsViewsResult, asksViewsResult] = await Promise.all([
+    // 紀錄數量
     supabase
       .from('records')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId),
+    // 詢問數量
     supabase
       .from('asks')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId),
+    // 紀錄的總觀看次數
+    supabase
+      .from('records')
+      .select('view_count')
+      .eq('user_id', userId),
+    // 詢問的總觀看次數
+    supabase
+      .from('asks')
+      .select('view_count')
+      .eq('user_id', userId),
   ]);
+
+  // 計算總觀看次數
+  const recordsViews = (recordsViewsResult.data || []).reduce((sum, r) => sum + (r.view_count || 0), 0);
+  const asksViews = (asksViewsResult.data || []).reduce((sum, a) => sum + (a.view_count || 0), 0);
+  const totalViews = recordsViews + asksViews;
 
   res.json({
     id: user.id,
     display_name: user.display_name,
     avatar_url: user.avatar_url,
-    total_records: recordsCount.count || 0,
-    total_asks: asksCount.count || 0,
-    total_views: user.total_views || 0,
+    total_records: recordsResult.count || 0,
+    total_asks: asksResult.count || 0,
+    total_views: totalViews,
     created_at: user.created_at,
   });
 }));

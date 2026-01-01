@@ -219,7 +219,8 @@ struct ImageDropDelegate: DropDelegate {
                 thumbnailPublicUrl: "https://picsum.photos/100",
                 location: nil,
                 capturedAt: nil,
-                displayOrder: 0
+                displayOrder: 0,
+                address: nil
             )),
             .existing(ImageMedia(
                 id: "2",
@@ -227,7 +228,8 @@ struct ImageDropDelegate: DropDelegate {
                 thumbnailPublicUrl: "https://picsum.photos/101",
                 location: nil,
                 capturedAt: nil,
-                displayOrder: 1
+                displayOrder: 1,
+                address: nil
             ))
         ]
         

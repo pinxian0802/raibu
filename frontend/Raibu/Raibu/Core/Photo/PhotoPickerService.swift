@@ -9,6 +9,7 @@ import Foundation
 import Photos
 import UIKit
 import Combine
+import CoreLocation
 
 /// 時間範圍選項
 enum DateRangeOption: String, CaseIterable {
@@ -126,16 +127,92 @@ class PhotoPickerService: ObservableObject {
         }
     }
     
-    /// 批次載入照片資料
+    /// 批次載入照片資料（含逆向地理編碼）
     func loadPhotosData(for assets: [PHAsset]) async throws -> [SelectedPhoto] {
         var photos: [SelectedPhoto] = []
         
         for asset in assets {
-            let photo = try await loadPhotoData(for: asset)
+            var photo = try await loadPhotoData(for: asset)
+            
+            // 逆向地理編碼
+            if let location = photo.location {
+                photo.address = await reverseGeocode(location: location)
+            }
+            
             photos.append(photo)
         }
         
         return photos
+    }
+    
+    /// 逆向地理編碼
+    private func reverseGeocode(location: Coordinate) async -> String? {
+        let geocoder = CLGeocoder()
+        let clLocation = CLLocation(latitude: location.lat, longitude: location.lng)
+        
+        do {
+            let placemarks = try await geocoder.reverseGeocodeLocation(clLocation)
+            if let placemark = placemarks.first {
+                var addressParts: [String] = []
+                
+                // Debug: 顯示 CLGeocoder 回傳的各個欄位
+                print("=== CLGeocoder Debug ===")
+                print("name: \(placemark.name ?? "nil")")
+                print("thoroughfare: \(placemark.thoroughfare ?? "nil")")
+                print("subThoroughfare: \(placemark.subThoroughfare ?? "nil")")
+                print("subLocality: \(placemark.subLocality ?? "nil")")
+                print("locality: \(placemark.locality ?? "nil")")
+                print("administrativeArea: \(placemark.administrativeArea ?? "nil")")
+                print("========================")
+                
+                // 優先使用 name（通常是最精確的地址/商家名稱）
+                if let name = placemark.name {
+                    addressParts.append(name)
+                }
+                
+                // 只有當 name 不包含街道資訊時，才添加街道
+                if let thoroughfare = placemark.thoroughfare {
+                    let streetAddress: String
+                    if let subThoroughfare = placemark.subThoroughfare {
+                        streetAddress = "\(thoroughfare) \(subThoroughfare)"
+                    } else {
+                        streetAddress = thoroughfare
+                    }
+                    
+                    // 檢查是否和 name 重複（避免重複添加）
+                    let isDuplicate = addressParts.contains { existingPart in
+                        existingPart.contains(thoroughfare) || streetAddress.contains(existingPart)
+                    }
+                    
+                    if !isDuplicate {
+                        addressParts.append(streetAddress)
+                    }
+                }
+                
+                // 台灣地址結構：subLocality=里, locality=區, administrativeArea=市
+                // 只顯示「區」和「市」
+                
+                // 添加區（locality）
+                if let locality = placemark.locality {
+                    if !addressParts.contains(where: { $0.contains(locality) }) {
+                        addressParts.append(locality)
+                    }
+                }
+                
+                // 添加城市（administrativeArea）
+                if let administrativeArea = placemark.administrativeArea {
+                    if !addressParts.contains(where: { $0.contains(administrativeArea) }) {
+                        addressParts.append(administrativeArea)
+                    }
+                }
+                
+                return addressParts.isEmpty ? nil : addressParts.joined(separator: ", ")
+            }
+        } catch {
+            print("Geocoding failed: \(error.localizedDescription)")
+        }
+        
+        return nil
     }
     
     // MARK: - Private Methods

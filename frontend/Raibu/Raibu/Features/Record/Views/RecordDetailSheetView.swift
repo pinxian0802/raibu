@@ -6,13 +6,17 @@
 //
 
 import SwiftUI
+import MapKit
 
 /// 紀錄詳情 Sheet 視圖
 struct RecordDetailSheetView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var container: DIContainer
     @StateObject private var viewModel: RecordDetailViewModel
     @State private var showReplyInput = false
     @State private var showMoreOptions = false
+    @State private var showEditSheet = false
     
     init(
         recordId: String,
@@ -29,14 +33,25 @@ struct RecordDetailSheetView: View {
     }
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                if viewModel.isLoading {
+        VStack(spacing: 0) {
+            // 拖曳指示條
+            Capsule()
+                .fill(Color(.systemGray3))
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+            
+            NavigationView {
+                ZStack {
+                    if viewModel.isLoading {
                     loadingView
                 } else if let record = viewModel.record {
                     contentView(record: record)
                 } else if let error = viewModel.errorMessage {
                     errorView(message: error)
+                } else {
+                    // Fallback: 確保不會有空白狀態
+                    loadingView
                 }
             }
             .navigationTitle("")
@@ -52,12 +67,27 @@ struct RecordDetailSheetView: View {
         }
         .confirmationDialog("管理", isPresented: $showMoreOptions) {
             Button("編輯", role: nil) {
-                // 導航至編輯頁
+                showEditSheet = true
             }
             Button("刪除", role: .destructive) {
                 viewModel.showDeleteConfirmation = true
             }
             Button("取消", role: .cancel) {}
+        }
+        .sheet(isPresented: $showEditSheet) {
+            if let record = viewModel.record {
+                EditRecordView(
+                    recordId: viewModel.recordId,
+                    record: record,
+                    uploadService: container.uploadService,
+                    recordRepository: container.recordRepository,
+                    onComplete: {
+                        Task {
+                            await viewModel.loadRecord()
+                        }
+                    }
+                )
+            }
         }
         .alert("確認刪除", isPresented: $viewModel.showDeleteConfirmation) {
             Button("取消", role: .cancel) {}
@@ -71,6 +101,7 @@ struct RecordDetailSheetView: View {
         } message: {
             Text("確定要刪除此標點嗎？此動作無法復原。")
         }
+        } // VStack
     }
     
     // MARK: - Content View
@@ -82,7 +113,17 @@ struct RecordDetailSheetView: View {
                 if let images = record.images, !images.isEmpty {
                     ImageCarouselView(
                         images: images,
-                        initialIndex: viewModel.initialImageIndex
+                        initialIndex: viewModel.initialImageIndex,
+                        onLocationTap: { image in
+                            // 點擊「查看位置」按鈕跳轉到地圖位置
+                            if let coordinate = image.clLocationCoordinate {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    // 跳轉到地圖並切換到紀錄模式
+                                    navigationCoordinator.navigateToMap(coordinate: coordinate, mapMode: .record)
+                                }
+                            }
+                        }
                     )
                     .frame(height: 280)
                 }
@@ -173,7 +214,9 @@ struct RecordDetailSheetView: View {
                     .padding(.vertical, 20)
             } else {
                 ForEach(viewModel.replies) { reply in
-                    ReplyRowView(reply: reply)
+                    ReplyRowView(reply: reply) { replyId in
+                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                    }
                     
                     if reply.id != viewModel.replies.last?.id {
                         Divider()
@@ -245,6 +288,7 @@ struct RecordDetailSheetView: View {
 
 struct ReplyRowView: View {
     let reply: Reply
+    var onLikeToggle: ((String) -> Void)? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -308,7 +352,7 @@ struct ReplyRowView: View {
                     count: reply.likeCount,
                     isLiked: reply.userHasLiked ?? false
                 ) {
-                    // Toggle like
+                    onLikeToggle?(reply.id)
                 }
             }
         }

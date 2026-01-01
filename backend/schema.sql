@@ -84,6 +84,7 @@ CREATE TABLE public.image_media (
   captured_at TIMESTAMPTZ,
   uploaded_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   display_order INTEGER DEFAULT 0,
+  address TEXT,
   CONSTRAINT image_parent_check CHECK (
     (record_id IS NOT NULL AND ask_id IS NULL AND reply_id IS NULL) OR
     (record_id IS NULL AND ask_id IS NOT NULL AND reply_id IS NULL) OR

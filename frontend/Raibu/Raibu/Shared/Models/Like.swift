@@ -58,11 +58,13 @@ struct ToggleLikeRequest: Codable {
 
 /// 點讚回應
 struct ToggleLikeResponse: Codable {
-    let liked: Bool
-    let newCount: Int
+    let success: Bool
+    let action: String  // "liked" or "unliked"
+    let likeCount: Int
     
     enum CodingKeys: String, CodingKey {
-        case liked
-        case newCount = "new_count"
+        case success
+        case action
+        case likeCount = "like_count"
     }
 }

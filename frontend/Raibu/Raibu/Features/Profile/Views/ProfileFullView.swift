@@ -11,10 +11,15 @@ import Combine
 /// 個人頁面視圖
 struct ProfileFullView: View {
     @EnvironmentObject var authService: AuthService
+    @EnvironmentObject var container: DIContainer
+    @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @StateObject private var viewModel: ProfileViewModel
     
     @State private var selectedTab = 0
     @State private var showLogoutConfirmation = false
+    
+    // 詳情 Sheet 狀態
+    @State private var selectedDetailItem: DetailSheetItem?
     
     init(userRepository: UserRepository) {
         _viewModel = StateObject(wrappedValue: ProfileViewModel(userRepository: userRepository))
@@ -60,6 +65,31 @@ struct ProfileFullView: View {
         }
         .task {
             await viewModel.loadProfile()
+        }
+        .sheet(item: $selectedDetailItem, onDismiss: {
+            // 關閉詳情頁後重新載入列表，確保愛心數量等資料同步
+            Task {
+                await viewModel.loadMyRecords()
+                await viewModel.loadMyAsks()
+            }
+        }) { item in
+            switch item {
+            case .record(let recordId, let imageIndex):
+                RecordDetailSheetView(
+                    recordId: recordId,
+                    initialImageIndex: imageIndex,
+                    recordRepository: container.recordRepository,
+                    replyRepository: container.replyRepository
+                )
+                .environmentObject(navigationCoordinator)
+            case .ask(let askId):
+                AskDetailSheetView(
+                    askId: askId,
+                    askRepository: container.askRepository,
+                    replyRepository: container.replyRepository
+                )
+                .environmentObject(navigationCoordinator)
+            }
         }
     }
     
@@ -204,7 +234,13 @@ struct ProfileFullView: View {
                 )
             } else {
                 ForEach(viewModel.myRecords) { record in
-                    recordRow(record)
+                    Button {
+                        // 從個人頁面進入時從第一張圖片開始
+                        selectedDetailItem = .record(id: record.id, imageIndex: 0)
+                    } label: {
+                        recordRow(record)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -227,7 +263,12 @@ struct ProfileFullView: View {
                 )
             } else {
                 ForEach(viewModel.myAsks) { ask in
-                    askRow(ask)
+                    Button {
+                        selectedDetailItem = .ask(id: ask.id)
+                    } label: {
+                        askRow(ask)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

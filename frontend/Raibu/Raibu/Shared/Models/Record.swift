@@ -95,6 +95,7 @@ struct MapRecordImage: Codable, Identifiable {
     let lat: Double
     let lng: Double
     let displayOrder: Int
+    let createdAt: Date? // Optional, as older RPC might not return it
     
     var id: String { imageId }
     
@@ -109,6 +110,7 @@ struct MapRecordImage: Codable, Identifiable {
         case lat
         case lng
         case displayOrder = "display_order"
+        case createdAt = "created_at"
     }
 }
 
