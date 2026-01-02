@@ -47,16 +47,14 @@ struct AskDetailSheetView: View {
                 ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if viewModel.isLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, minHeight: 200)
+                        AskDetailSkeleton()
                     } else if let ask = viewModel.ask {
                         askContent(ask)
                     } else if let error = viewModel.errorMessage {
                         errorView(error)
                     } else {
                         // Fallback: 確保不會有空白狀態
-                        ProgressView()
-                            .frame(maxWidth: .infinity, minHeight: 200)
+                        AskDetailSkeleton()
                     }
                 }
                 .padding()
@@ -250,8 +248,9 @@ struct AskDetailSheetView: View {
             }
             
             if viewModel.isLoadingReplies {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
+                ForEach(0..<2, id: \.self) { _ in
+                    ReplyRowSkeleton()
+                }
             } else if viewModel.replies.isEmpty {
                 Text("目前沒有回覆")
                     .font(.subheadline)

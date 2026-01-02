@@ -48,12 +48,8 @@ struct ImageThumbnailView: View {
     
     private var placeholderView: some View {
         Circle()
-            .fill(Color(.systemGray4))
-            .overlay(
-                Image(systemName: "photo")
-                    .font(.system(size: size * 0.4))
-                    .foregroundColor(.secondary)
-            )
+            .fill(Color(.systemGray5))
+            .shimmer()
     }
 }
 
@@ -94,11 +90,7 @@ struct SquareThumbnailView: View {
     private var placeholderView: some View {
         RoundedRectangle(cornerRadius: cornerRadius)
             .fill(Color(.systemGray5))
-            .overlay(
-                Image(systemName: "photo")
-                    .font(.system(size: size * 0.4))
-                    .foregroundColor(.secondary)
-            )
+            .shimmer()
     }
 }
 

@@ -186,9 +186,7 @@ struct ImageCarouselView: View {
                     placeholder: {
                         Rectangle()
                             .fill(Color(.systemGray5))
-                            .overlay(
-                                ProgressView()
-                            )
+                            .shimmer()
                     },
                     errorView: {
                         Rectangle()

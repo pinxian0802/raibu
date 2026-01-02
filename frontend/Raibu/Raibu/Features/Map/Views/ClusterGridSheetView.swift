@@ -158,7 +158,7 @@ struct ClusterGridSheetView: View {
                 case .empty:
                     Rectangle()
                         .fill(Color(.systemGray5))
-                        .overlay(ProgressView())
+                        .shimmer()
                 case .failure:
                     Rectangle()
                         .fill(Color(.systemGray5))
@@ -438,11 +438,7 @@ struct RecordDetailContentView: View {
     // MARK: - Supporting Views
     
     private var loadingView: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-            Text("載入中...")
-                .foregroundColor(.secondary)
-        }
+        RecordDetailSkeleton()
     }
     
     private func errorView(message: String) -> some View {

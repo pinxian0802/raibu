@@ -25,7 +25,6 @@ struct MapContentView: View {
     @StateObject private var toastManager = ToastManager()
     
     @State private var searchText = ""
-    @State private var showCreateRecord = false
     @State private var createAskLocation: CreateAskLocation?
     
     // Sheet 控制
@@ -81,17 +80,6 @@ struct MapContentView: View {
             )
             .environmentObject(navigationCoordinator)
             .environmentObject(container)
-        }
-        .sheet(isPresented: $showCreateRecord, onDismiss: {
-            // 刷新地圖資料以顯示新建立的紀錄
-            Task {
-                await viewModel.fetchDataForCurrentRegion()
-            }
-        }) {
-            CreateRecordFullView(
-                uploadService: container.uploadService,
-                recordRepository: container.recordRepository
-            )
         }
         .sheet(item: $createAskLocation, onDismiss: {
             // 刷新地圖資料以顯示新建立的詢問
@@ -254,21 +242,6 @@ struct MapContentView: View {
                             .background(Color(.systemBackground))
                             .clipShape(Circle())
                             .shadow(color: Color.black.opacity(0.15), radius: 5)
-                    }
-                    
-                    // 新增按鈕
-                    if viewModel.currentMode == .record {
-                        Button {
-                            showCreateRecord = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(width: 56, height: 56)
-                                .background(Color.blue)
-                                .clipShape(Circle())
-                                .shadow(color: Color.blue.opacity(0.4), radius: 8, x: 0, y: 4)
-                        }
                     }
                 }
             }
@@ -486,6 +459,9 @@ struct MapViewRepresentable: UIViewRepresentable {
         /// 圖片快取
         private static let imageCache = NSCache<NSString, UIImage>()
         
+        /// Badge 尺寸常數（需與 createThumbnailWithBadge 保持一致）
+        private var badgeSize: CGFloat { 28 }
+        
         /// 非同步載入縮圖（帶快取）
         private func loadThumbnail(for annotationView: MKAnnotationView?, urlString: String, badgeCount: Int?) {
             guard let url = URL(string: urlString) else { return }
@@ -495,12 +471,22 @@ struct MapViewRepresentable: UIViewRepresentable {
             // 檢查快取
             if let cachedImage = Self.imageCache.object(forKey: cacheKey) {
                 annotationView?.image = cachedImage
+                // 有 badge 時需要調整 centerOffset
+                if badgeCount != nil {
+                    let badgeOffset = badgeSize / 2
+                    annotationView?.centerOffset = CGPoint(x: badgeOffset / 2, y: badgeOffset / 2)
+                } else {
+                    annotationView?.centerOffset = .zero
+                }
                 return
             }
             
             // 使用帶快取策略的請求
             var request = URLRequest(url: url)
             request.cachePolicy = .returnCacheDataElseLoad
+            
+            let hasBadge = badgeCount != nil
+            let badgeOffsetValue = badgeSize / 2
             
             URLSession.shared.dataTask(with: request) { [weak annotationView] data, _, _ in
                 guard let data = data, let originalImage = UIImage(data: data) else { return }
@@ -517,6 +503,13 @@ struct MapViewRepresentable: UIViewRepresentable {
                 
                 DispatchQueue.main.async {
                     annotationView?.image = thumbnailImage
+                    // 有 badge 時，圖片右上角有額外空間，需要調整 centerOffset
+                    // 讓正方形縮圖的中心對準座標位置
+                    if hasBadge {
+                        annotationView?.centerOffset = CGPoint(x: badgeOffsetValue / 2, y: badgeOffsetValue / 2)
+                    } else {
+                        annotationView?.centerOffset = .zero
+                    }
                 }
             }.resume()
         }
@@ -574,17 +567,24 @@ struct MapViewRepresentable: UIViewRepresentable {
         
         /// 從圖片建立帶數量 badge 的縮圖（右上角顯示群聚數量）
         private func createThumbnailWithBadge(from image: UIImage, count: Int) -> UIImage {
-            let size = CGSize(width: iconSize, height: iconSize)
             let borderWidth: CGFloat = 3
             let badgeSize: CGFloat = 28
-            let renderer = UIGraphicsImageRenderer(size: size)
+            // badge 偏移量需要足夠大，讓整個 badge 圓圈都在渲染區域內
+            // badge 圓心在正方形右上角，所以需要 badgeSize/2 的空間
+            let badgeOffset: CGFloat = badgeSize / 2
+            
+            // 擴大渲染區域以容納 badge 的偏移
+            let totalSize = CGSize(width: iconSize + badgeOffset, height: iconSize + badgeOffset)
+            let renderer = UIGraphicsImageRenderer(size: totalSize)
             
             return renderer.image { context in
-                let rect = CGRect(origin: .zero, size: size)
-                let innerRect = rect.insetBy(dx: borderWidth, dy: borderWidth)
+                // 正方形縮圖位置（向下和向左偏移以留出 badge 空間）
+                let thumbnailOrigin = CGPoint(x: 0, y: badgeOffset)
+                let thumbnailRect = CGRect(origin: thumbnailOrigin, size: CGSize(width: iconSize, height: iconSize))
+                let innerRect = thumbnailRect.insetBy(dx: borderWidth, dy: borderWidth)
                 
                 // 繪製白色邊框背景（圓角正方形）
-                let borderPath = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
+                let borderPath = UIBezierPath(roundedRect: thumbnailRect, cornerRadius: cornerRadius)
                 UIColor.white.setFill()
                 borderPath.fill()
                 
@@ -614,10 +614,14 @@ struct MapViewRepresentable: UIViewRepresentable {
                 // 恢復狀態以繪製 badge
                 context.cgContext.restoreGState()
                 
-                // 繪製右上角的數量 badge
+                // 繪製右上角的數量 badge（圓心位於正方形右上角）
+                // badge 圓心 x = iconSize（正方形右邊緣）
+                // badge 圓心 y = badgeOffset（正方形上邊緣）
+                let badgeCenterX = iconSize
+                let badgeCenterY = badgeOffset
                 let badgeRect = CGRect(
-                    x: size.width - badgeSize + 4,
-                    y: -4,
+                    x: badgeCenterX - badgeSize / 2,
+                    y: badgeCenterY - badgeSize / 2,
                     width: badgeSize,
                     height: badgeSize
                 )

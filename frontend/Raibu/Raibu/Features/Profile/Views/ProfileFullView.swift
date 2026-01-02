@@ -224,8 +224,9 @@ struct ProfileFullView: View {
     private var recordsList: some View {
         VStack(spacing: 12) {
             if viewModel.isLoadingRecords {
-                ProgressView()
-                    .padding()
+                ForEach(0..<3, id: \.self) { _ in
+                    RecordRowSkeleton()
+                }
             } else if viewModel.myRecords.isEmpty {
                 emptyStateView(
                     icon: "camera",
@@ -253,8 +254,9 @@ struct ProfileFullView: View {
     private var asksList: some View {
         VStack(spacing: 12) {
             if viewModel.isLoadingAsks {
-                ProgressView()
-                    .padding()
+                ForEach(0..<3, id: \.self) { _ in
+                    AskRowSkeleton()
+                }
             } else if viewModel.myAsks.isEmpty {
                 emptyStateView(
                     icon: "questionmark.circle",
