@@ -9,10 +9,39 @@ import Foundation
 import SwiftUI
 import Combine
 
+/// 認證狀態
+enum AuthState {
+    case unauthenticated
+    case awaitingEmailVerification(email: String)
+    case awaitingPasswordReset(email: String)
+    case authenticated
+}
+
 /// 認證服務
 class AuthService: ObservableObject {
-    @Published var isAuthenticated = false
+    @Published var authState: AuthState = .unauthenticated
     @Published var currentUser: User?
+    @Published var isLoading = false
+    
+    /// 便利屬性：是否已認證
+    var isAuthenticated: Bool {
+        if case .authenticated = authState { return true }
+        return false
+    }
+    
+    /// 便利屬性：是否等待 Email 驗證
+    var isAwaitingVerification: Bool {
+        if case .awaitingEmailVerification = authState { return true }
+        return false
+    }
+    
+    /// 等待驗證的 Email（如果有的話）
+    var pendingVerificationEmail: String? {
+        if case .awaitingEmailVerification(let email) = authState {
+            return email
+        }
+        return nil
+    }
     
     private let keychainManager: KeychainManager
     private(set) var accessToken: String?
@@ -35,7 +64,7 @@ class AuthService: ObservableObject {
             // 驗證 Token 是否有效
             if await validateToken(token) {
                 await MainActor.run {
-                    isAuthenticated = true
+                    authState = .authenticated
                 }
             } else {
                 // Token 無效，清除
@@ -66,13 +95,33 @@ class AuthService: ObservableObject {
         }
         
         if httpResponse.statusCode != 200 {
-            if let errorResponse = try? JSONDecoder().decode(AuthErrorResponse.self, from: data) {
-                throw AuthError.authFailed(message: errorResponse.errorDescription ?? errorResponse.message ?? "登入失敗")
+            // 🔍 Debug: 印出登入錯誤回應
+            #if DEBUG
+            if let rawJSON = String(data: data, encoding: .utf8) {
+                print("❌ Login Error (Status: \(httpResponse.statusCode)): \(rawJSON)")
             }
-            throw AuthError.authFailed(message: "登入失敗")
+            #endif
+            
+            if let errorResponse = try? JSONDecoder().decode(AuthErrorResponse.self, from: data) {
+                // 使用統一錯誤處理
+                let errorMsg = errorResponse.toLocalizedMessage(fallback: "登入失敗，請稍後再試")
+                
+                // 特殊處理：Email 未驗證需要特別狀態
+                if errorResponse.errorCode == "email_not_confirmed" {
+                    throw AuthError.emailNotVerified
+                }
+                
+                throw AuthError.authFailed(message: errorMsg)
+            }
+            throw AuthError.authFailed(message: "登入失敗，請稍後再試")
         }
         
         let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
+        
+        // 檢查 Email 是否已驗證
+        if let user = authResponse.supabaseUser, user.emailConfirmedAt == nil {
+            throw AuthError.emailNotVerified
+        }
         
         // 儲存 Token
         keychainManager.saveAccessToken(authResponse.accessToken)
@@ -81,11 +130,11 @@ class AuthService: ObservableObject {
         
         await MainActor.run {
             currentUser = authResponse.user
-            isAuthenticated = true
+            authState = .authenticated
         }
     }
     
-    /// 註冊
+    /// 註冊（需要 Email 驗證）
     func signUp(email: String, password: String, displayName: String) async throws {
         let url = URL(string: "\(supabaseURL)/auth/v1/signup")!
         
@@ -105,21 +154,443 @@ class AuthService: ObservableObject {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw AuthError.signUpFailed
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
         }
         
+        // 處理錯誤回應
+        if httpResponse.statusCode != 200 {
+            if let errorResponse = try? JSONDecoder().decode(AuthErrorResponse.self, from: data) {
+                // 使用統一錯誤處理
+                let errorMsg = errorResponse.toLocalizedMessage(fallback: "註冊失敗，請稍後再試")
+                
+                // 特殊處理：Email 已存在需要特別狀態
+                if errorResponse.errorCode == "email_exists" || errorResponse.errorCode == "user_already_exists" {
+                    throw AuthError.emailAlreadyRegistered
+                }
+                
+                throw AuthError.signUpFailed(message: errorMsg)
+            }
+            throw AuthError.signUpFailed(message: "註冊失敗，請稍後再試")
+        }
+        
+        // 🔍 Debug: 印出 Supabase 回傳的原始資料
+        #if DEBUG
+        if let rawJSON = String(data: data, encoding: .utf8) {
+            print("📧 Supabase SignUp Response: \(rawJSON)")
+        }
+        #endif
+        
+        // 嘗試解析回應
+        // Supabase 在不同情況可能回傳不同格式：
+        // 1. 有 access_token 時：{"access_token": "...", "user": {...}}
+        // 2. 需要驗證時：直接回傳 user 物件 {"id": "...", "email": "...", "identities": [...]}
+        
+        // 首先嘗試解析為 SignUpResponse（有 access_token 的格式）
+        if let signUpResponse = try? JSONDecoder().decode(SignUpResponse.self, from: data),
+           signUpResponse.accessToken != nil {
+            // 有 token，直接登入
+            if let token = signUpResponse.accessToken, let refreshToken = signUpResponse.refreshToken {
+                keychainManager.saveAccessToken(token)
+                keychainManager.saveRefreshToken(refreshToken)
+                accessToken = token
+                
+                await MainActor.run {
+                    currentUser = signUpResponse.user
+                    authState = .authenticated
+                }
+            }
+            return
+        }
+        
+        // 嘗試直接解析為 SupabaseUser（需要驗證的格式）
+        let user = try JSONDecoder().decode(SupabaseUser.self, from: data)
+        
+        // 🔍 檢查是否為「假註冊」（Supabase 回傳成功但使用者已存在）
+        // 當 Email 已存在時，identities 會是空陣列 []
+        let identities = user.identities ?? []
+        if identities.isEmpty {
+            print("⚠️ Duplicate email detected: identities is empty")
+            throw AuthError.emailAlreadyRegistered
+        }
+        
+        // 需要 Email 驗證
+        await MainActor.run {
+            authState = .awaitingEmailVerification(email: email)
+        }
+    }
+    
+    /// 重新發送 OTP 驗證碼
+    func resendOTP(email: String) async throws {
+        let url = URL(string: "\(supabaseURL)/auth/v1/otp")!
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        
+        let body: [String: Any] = [
+            "email": email,
+            "create_user": false  // 不創建新用戶，只發送 OTP
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.resendFailed
+        }
+    }
+    
+    /// 驗證 OTP 驗證碼
+    func verifyOTP(email: String, token: String) async throws {
+        let url = URL(string: "\(supabaseURL)/auth/v1/verify")!
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        
+        let body: [String: Any] = [
+            "email": email,
+            "token": token,
+            "type": "signup"  // 註冊驗證類型
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
+        }
+        
+        if httpResponse.statusCode != 200 {
+            // 🔍 Debug: 印出錯誤回應
+            #if DEBUG
+            if let rawJSON = String(data: data, encoding: .utf8) {
+                print("❌ OTP Verify Error (Status: \(httpResponse.statusCode)): \(rawJSON)")
+            }
+            #endif
+            
+            if let errorResponse = try? JSONDecoder().decode(AuthErrorResponse.self, from: data) {
+                // 檢查是否為 OTP 過期或無效
+                if errorResponse.errorCode == "otp_expired" || errorResponse.errorCode == "otp_disabled" {
+                    throw AuthError.otpInvalid
+                }
+                
+                // 使用統一錯誤處理
+                let errorMsg = errorResponse.toLocalizedMessage(fallback: "驗證失敗，請稍後再試")
+                throw AuthError.authFailed(message: errorMsg)
+            }
+            throw AuthError.otpInvalid
+        }
+        
+        // 驗證成功，解析 token
         let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
         
+        // 儲存 Token
         keychainManager.saveAccessToken(authResponse.accessToken)
         keychainManager.saveRefreshToken(authResponse.refreshToken)
         accessToken = authResponse.accessToken
         
         await MainActor.run {
             currentUser = authResponse.user
-            isAuthenticated = true
+            authState = .authenticated
         }
+    }
+    
+    /// 重新發送驗證信（保留舊方法以便相容）
+    func resendVerificationEmail(email: String) async throws {
+        try await resendOTP(email: email)
+    }
+    
+    // MARK: - Password Reset
+    
+    /// 發送密碼重設 OTP 驗證碼（使用 recover endpoint 觸發 Reset Password 模板）
+    func sendPasswordResetOTP(email: String) async throws {
+        let url = URL(string: "\(supabaseURL)/auth/v1/recover")!
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        
+        let body: [String: Any] = [
+            "email": email
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
+        }
+        
+        // recover endpoint 成功時回傳 200
+        if httpResponse.statusCode != 200 {
+            // 🔍 Debug: 印出錯誤回應
+            #if DEBUG
+            if let rawJSON = String(data: data, encoding: .utf8) {
+                print("❌ Password Reset Error (Status: \(httpResponse.statusCode)): \(rawJSON)")
+            }
+            #endif
+            
+            if let errorResponse = try? JSONDecoder().decode(AuthErrorResponse.self, from: data) {
+                // 使用統一錯誤處理
+                let errorMsg = errorResponse.toLocalizedMessage(fallback: "發送驗證碼失敗，請稍後再試")
+                throw AuthError.authFailed(message: errorMsg)
+            }
+            throw AuthError.authFailed(message: "發送驗證碼失敗，請稍後再試")
+        }
+        
+        // 成功發送，切換到密碼重設等待狀態
+        await MainActor.run {
+            authState = .awaitingPasswordReset(email: email)
+        }
+    }
+    
+    /// 驗證密碼重設 OTP（第一步：僅驗證）
+    /// 成功後回傳 access_token 供後續更新密碼使用
+    private var passwordResetAccessToken: String?
+    
+    func verifyPasswordResetCode(email: String, token: String) async throws {
+        let verifyUrl = URL(string: "\(supabaseURL)/auth/v1/verify")!
+        
+        var verifyRequest = URLRequest(url: verifyUrl)
+        verifyRequest.httpMethod = "POST"
+        verifyRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        verifyRequest.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        
+        let verifyBody: [String: Any] = [
+            "email": email,
+            "token": token,
+            "type": "recovery"  // 密碼重設驗證類型
+        ]
+        verifyRequest.httpBody = try JSONSerialization.data(withJSONObject: verifyBody)
+        
+        let (verifyData, verifyResponse) = try await URLSession.shared.data(for: verifyRequest)
+        
+        guard let httpVerifyResponse = verifyResponse as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
+        }
+        
+        if httpVerifyResponse.statusCode != 200 {
+            // 🔍 Debug: 印出錯誤回應
+            #if DEBUG
+            if let rawJSON = String(data: verifyData, encoding: .utf8) {
+                print("❌ Password Reset OTP Error (Status: \(httpVerifyResponse.statusCode)): \(rawJSON)")
+            }
+            #endif
+            
+            if let errorResponse = try? JSONDecoder().decode(AuthErrorResponse.self, from: verifyData) {
+                // 檢查是否為 OTP 過期或無效
+                if errorResponse.errorCode == "otp_expired" || errorResponse.errorCode == "otp_disabled" {
+                    throw AuthError.otpInvalid
+                }
+                
+                // 使用統一錯誤處理
+                let errorMsg = errorResponse.toLocalizedMessage(fallback: "驗證失敗，請稍後再試")
+                throw AuthError.authFailed(message: errorMsg)
+            }
+            throw AuthError.otpInvalid
+        }
+        
+        // 解析驗證成功後的 access_token 並暫存
+        let authResponse = try JSONDecoder().decode(AuthResponse.self, from: verifyData)
+        passwordResetAccessToken = authResponse.accessToken
+        
+        // 🔍 Debug: 印出 access token 供測試用
+        #if DEBUG
+        print("✅ OTP Verified! Access Token for testing:")
+        print("🔑 \(authResponse.accessToken)")
+        #endif
+        
+        // 暫存 tokens（驗證成功但還沒改密碼）
+        keychainManager.saveAccessToken(authResponse.accessToken)
+        keychainManager.saveRefreshToken(authResponse.refreshToken)
+        accessToken = authResponse.accessToken
+    }
+    
+    /// 更新密碼（第二步：驗證成功後設定新密碼）
+    func updatePassword(newPassword: String) async throws {
+        guard let token = passwordResetAccessToken ?? accessToken else {
+            throw AuthError.authFailed(message: "請先驗證驗證碼")
+        }
+        
+        let updateUrl = URL(string: "\(supabaseURL)/auth/v1/user")!
+        
+        var updateRequest = URLRequest(url: updateUrl)
+        updateRequest.httpMethod = "PUT"
+        updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        updateRequest.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        updateRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let updateBody: [String: Any] = [
+            "password": newPassword
+        ]
+        updateRequest.httpBody = try JSONSerialization.data(withJSONObject: updateBody)
+        
+        let (updateData, updateResponse) = try await URLSession.shared.data(for: updateRequest)
+        
+        guard let httpUpdateResponse = updateResponse as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
+        }
+        
+        if httpUpdateResponse.statusCode != 200 {
+            // 🔍 Debug: 印出錯誤回應
+            #if DEBUG
+            if let rawJSON = String(data: updateData, encoding: .utf8) {
+                print("❌ Password Update Error (Status: \(httpUpdateResponse.statusCode)): \(rawJSON)")
+            }
+            #endif
+            
+            // 使用統一錯誤處理
+            if let errorResponse = try? JSONDecoder().decode(AuthErrorResponse.self, from: updateData) {
+                let errorMsg = errorResponse.toLocalizedMessage(fallback: "更新密碼失敗，請稍後再試")
+                throw AuthError.authFailed(message: errorMsg)
+            }
+            
+            throw AuthError.authFailed(message: "更新密碼失敗，請稍後再試")
+        }
+        
+        // 密碼重設成功！
+        // 清除所有暫存的 token（不自動登入，讓使用者手動登入）
+        passwordResetAccessToken = nil
+        accessToken = nil
+        keychainManager.clearTokens()
+        
+        // 不自動登入，由 UI 層處理顯示成功頁面
+    }
+    
+    /// 保留舊方法向後相容（一步完成）
+    func verifyPasswordResetOTP(email: String, token: String, newPassword: String) async throws {
+        try await verifyPasswordResetCode(email: email, token: token)
+        try await updatePassword(newPassword: newPassword)
+    }
+    
+    /// 取消密碼重設（返回登入）
+    func cancelPasswordReset() {
+        passwordResetAccessToken = nil
+        authState = .unauthenticated
+    }
+    
+    // MARK: - Debug: 測試更新密碼 API（不需要走 OTP 流程）
+    #if DEBUG
+    /// 🧪 測試用：用目前登入用戶的 token 直接測試更新密碼 API
+    /// 使用方式：登入後在 Console 呼叫 authService.testUpdatePassword("新密碼")
+    @discardableResult
+    func testUpdatePassword(_ newPassword: String) async -> String {
+        guard let token = accessToken else {
+            print("❌ 測試失敗：請先登入")
+            return "❌ 測試失敗：請先登入"
+        }
+        
+        print("🧪 開始測試更新密碼 API...")
+        print("🔑 使用 Token: \(token.prefix(50))...")
+        
+        let updateUrl = URL(string: "\(supabaseURL)/auth/v1/user")!
+        
+        var updateRequest = URLRequest(url: updateUrl)
+        updateRequest.httpMethod = "PUT"
+        updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        updateRequest.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        updateRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let updateBody: [String: Any] = [
+            "password": newPassword
+        ]
+        
+        do {
+            updateRequest.httpBody = try JSONSerialization.data(withJSONObject: updateBody)
+            let (updateData, updateResponse) = try await URLSession.shared.data(for: updateRequest)
+            
+            guard let httpResponse = updateResponse as? HTTPURLResponse else {
+                print("❌ 無效回應")
+                return "❌ 無效回應"
+            }
+            
+            print("📊 Status Code: \(httpResponse.statusCode)")
+            
+            var resultMsg = "📊 Status Code: \(httpResponse.statusCode)\n"
+            
+            if let rawJSON = String(data: updateData, encoding: .utf8) {
+                print("📝 Response: \(rawJSON)")
+                resultMsg += "📝 Response: \(rawJSON)\n\n"
+            }
+            
+            // 嘗試解析錯誤訊息並轉換為中文
+            if httpResponse.statusCode != 200 {
+                if let errorResponse = try? JSONDecoder().decode(AuthErrorResponse.self, from: updateData) {
+                    let localizedMsg = errorResponse.toLocalizedMessage(fallback: "未知錯誤")
+                    resultMsg += "🇹🇼 中文訊息: \(localizedMsg)\n"
+                }
+            }
+            
+            if httpResponse.statusCode == 200 {
+                print("✅ 密碼更新成功！")
+                resultMsg = "✅ 密碼更新成功！\n" + resultMsg
+            } else if httpResponse.statusCode == 422 {
+                print("⚠️ 422 錯誤 - 可能是相同密碼或驗證失敗")
+                resultMsg = "⚠️ 422 錯誤\n" + resultMsg
+            } else {
+                print("❌ 更新失敗")
+                resultMsg = "❌ 更新失敗\n" + resultMsg
+            }
+            
+            return resultMsg
+        } catch {
+            print("❌ 錯誤: \(error.localizedDescription)")
+            return "❌ 錯誤: \(error.localizedDescription)"
+        }
+    }
+    #endif
+    
+    /// 處理 Deep Link 驗證回調
+    func handleAuthCallback(url: URL) async throws {
+        // Supabase 驗證連結格式：raibu://auth-callback#access_token=xxx&refresh_token=xxx&...
+        guard let fragment = url.fragment else {
+            throw AuthError.invalidCallback
+        }
+        
+        // 解析 URL fragment 中的參數
+        var params: [String: String] = [:]
+        for pair in fragment.components(separatedBy: "&") {
+            let parts = pair.components(separatedBy: "=")
+            if parts.count == 2 {
+                params[parts[0]] = parts[1].removingPercentEncoding
+            }
+        }
+        
+        // 檢查是否有錯誤
+        if let error = params["error"], let errorDescription = params["error_description"] {
+            throw AuthError.authFailed(message: errorDescription.replacingOccurrences(of: "+", with: " "))
+        }
+        
+        // 取得 tokens
+        guard let accessToken = params["access_token"],
+              let refreshToken = params["refresh_token"] else {
+            throw AuthError.invalidCallback
+        }
+        
+        // 儲存 tokens
+        keychainManager.saveAccessToken(accessToken)
+        keychainManager.saveRefreshToken(refreshToken)
+        self.accessToken = accessToken
+        
+        // 取得使用者資訊
+        if await validateToken(accessToken) {
+            await MainActor.run {
+                authState = .authenticated
+            }
+        } else {
+            throw AuthError.invalidCallback
+        }
+    }
+    
+    /// 取消等待驗證狀態（返回登入）
+    func cancelVerificationPending() {
+        authState = .unauthenticated
     }
     
     /// 登出
@@ -129,7 +600,7 @@ class AuthService: ObservableObject {
         
         await MainActor.run {
             currentUser = nil
-            isAuthenticated = false
+            authState = .unauthenticated
         }
     }
     
@@ -173,9 +644,25 @@ class AuthService: ObservableObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else { return false }
-            return httpResponse.statusCode == 200
+            
+            if httpResponse.statusCode == 200 {
+                // 解析使用者資訊
+                if let user = try? JSONDecoder().decode(SupabaseUser.self, from: data) {
+                    await MainActor.run {
+                        self.currentUser = User(
+                            id: user.id,
+                            displayName: user.userMetadata?.displayName ?? user.email ?? "使用者",
+                            avatarUrl: user.userMetadata?.avatarUrl,
+                            totalViews: nil,
+                            createdAt: nil
+                        )
+                    }
+                }
+                return true
+            }
+            return false
         } catch {
             return false
         }
@@ -208,17 +695,51 @@ struct AuthResponse: Codable {
     }
 }
 
+/// 註冊回應（可能沒有 access_token，表示需要驗證）
+struct SignUpResponse: Codable {
+    let accessToken: String?
+    let refreshToken: String?
+    let supabaseUser: SupabaseUser?
+    
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case supabaseUser = "user"
+    }
+    
+    var user: User? {
+        guard let su = supabaseUser else { return nil }
+        return User(
+            id: su.id,
+            displayName: su.userMetadata?.displayName ?? su.email ?? "使用者",
+            avatarUrl: su.userMetadata?.avatarUrl,
+            totalViews: nil,
+            createdAt: nil
+        )
+    }
+}
+
 /// Supabase Auth 回傳的使用者格式
 struct SupabaseUser: Codable {
     let id: String
     let email: String?
+    let emailConfirmedAt: String?
     let userMetadata: UserMetadata?
+    let identities: [UserIdentity]?
     
     enum CodingKeys: String, CodingKey {
         case id
         case email
+        case emailConfirmedAt = "email_confirmed_at"
         case userMetadata = "user_metadata"
+        case identities
     }
+}
+
+/// Supabase 使用者身份資訊
+struct UserIdentity: Codable {
+    let id: String
+    let provider: String
 }
 
 struct UserMetadata: Codable {
@@ -235,11 +756,73 @@ struct AuthErrorResponse: Codable {
     let error: String?
     let errorDescription: String?
     let message: String?
+    let errorCode: String?   // 新增：錯誤代碼 (e.g. "same_password")
+    let msg: String?         // 新增：錯誤訊息
+    let code: Int?           // 新增：HTTP 狀態碼
     
     enum CodingKeys: String, CodingKey {
         case error
         case errorDescription = "error_description"
         case message
+        case errorCode = "error_code"
+        case msg
+        case code
+    }
+}
+
+// MARK: - 統一錯誤處理
+// 參考: https://supabase.com/docs/guides/auth/debugging/error-codes
+
+extension AuthErrorResponse {
+    /// 將 Supabase error_code 轉換為中文錯誤訊息
+    /// 只處理常見錯誤，其他用通用訊息
+    func toLocalizedMessage(fallback: String) -> String {
+        // 優先檢查 error_code
+        if let errorCode = self.errorCode {
+            switch errorCode {
+            // 登入相關
+            case "invalid_credentials":
+                return "電子郵件或密碼錯誤"
+            case "user_not_found":
+                return "此帳號不存在"
+            case "email_not_confirmed":
+                return "請先驗證您的電子郵件"
+            case "user_banned":
+                return "此帳號已被停用"
+                
+            // 註冊相關
+            case "email_exists", "user_already_exists":
+                return "此電子郵件已被註冊"
+            case "weak_password":
+                return "密碼強度不足，請使用更複雜的密碼"
+            case "signup_disabled":
+                return "目前暫停註冊新帳號"
+                
+            // OTP 相關
+            case "otp_expired":
+                return "驗證碼已過期，請重新獲取"
+            case "otp_disabled":
+                return "驗證碼功能已停用"
+                
+            // 密碼重設相關
+            case "same_password":
+                return "新密碼不能與舊密碼相同"
+            case "reauthentication_needed":
+                return "需要重新驗證身份，請重新登入"
+                
+            // 頻率限制
+            case "over_email_send_rate_limit":
+                return "發送郵件過於頻繁，請稍後再試"
+            case "over_request_rate_limit":
+                return "請求過於頻繁，請稍後再試"
+                
+            default:
+                break
+            }
+        }
+        
+        // 其他錯誤：使用 fallback 訊息
+        return fallback
     }
 }
 
@@ -248,9 +831,14 @@ struct AuthErrorResponse: Codable {
 enum AuthError: LocalizedError {
     case invalidResponse
     case authFailed(message: String)
-    case signUpFailed
+    case signUpFailed(message: String)
+    case emailNotVerified
+    case emailAlreadyRegistered
+    case otpInvalid
     case noRefreshToken
     case refreshFailed
+    case resendFailed
+    case invalidCallback
     
     var errorDescription: String? {
         switch self {
@@ -258,12 +846,22 @@ enum AuthError: LocalizedError {
             return "無效的回應"
         case .authFailed(let message):
             return message
-        case .signUpFailed:
-            return "註冊失敗"
+        case .signUpFailed(let message):
+            return message
+        case .emailNotVerified:
+            return "請先驗證您的 Email"
+        case .emailAlreadyRegistered:
+            return "此 Email 已被註冊，請直接登入"
+        case .otpInvalid:
+            return "驗證碼無效或已過期，請重新獲取"
         case .noRefreshToken:
             return "找不到 Refresh Token"
         case .refreshFailed:
             return "Token 刷新失敗"
+        case .resendFailed:
+            return "重新發送驗證碼失敗"
+        case .invalidCallback:
+            return "驗證連結無效"
         }
     }
 }
