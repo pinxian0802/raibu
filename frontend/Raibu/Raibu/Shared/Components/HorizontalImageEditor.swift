@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Photos
+import Kingfisher
 
 /// 編輯頁面圖片項目
 struct EditableImageItem: Identifiable, Equatable {
@@ -126,16 +127,15 @@ struct HorizontalImageEditor: View {
         switch item.type {
         case .existing:
             if let url = item.thumbnailURL {
-                AsyncImage(url: URL(string: url)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
+                KFImage(URL(string: url))
+                    .placeholder {
                         placeholderView
                     }
-                }
+                    .retry(maxCount: 2, interval: .seconds(1))
+                    .cacheOriginalImage()
+                    .fade(duration: 0.2)
+                    .resizable()
+                    .scaledToFill()
             } else {
                 placeholderView
             }

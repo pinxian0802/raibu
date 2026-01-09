@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import Kingfisher
 
 /// 個人頁面視圖
 struct ProfileFullView: View {
@@ -98,13 +99,8 @@ struct ProfileFullView: View {
     private var profileCard: some View {
         VStack(spacing: 16) {
             // 頭像
-            AsyncImage(url: URL(string: viewModel.profile?.avatarUrl ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
+            KFImage(URL(string: viewModel.profile?.avatarUrl ?? ""))
+                .placeholder {
                     Circle()
                         .fill(Color(.systemGray4))
                         .overlay(
@@ -113,9 +109,13 @@ struct ProfileFullView: View {
                                 .foregroundColor(.secondary)
                         )
                 }
-            }
-            .frame(width: 100, height: 100)
-            .clipShape(Circle())
+                .retry(maxCount: 2, interval: .seconds(1))
+                .cacheOriginalImage()
+                .fade(duration: 0.2)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 100, height: 100)
+                .clipShape(Circle())
             
             // 名稱
             Text(viewModel.profile?.displayName ?? "使用者")

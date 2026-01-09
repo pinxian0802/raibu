@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Kingfisher
 
 /// 圖片縮圖視圖 (地圖標點使用，含白色邊框)
 struct ImageThumbnailView: View {
@@ -20,36 +21,24 @@ struct ImageThumbnailView: View {
     }
     
     var body: some View {
-        AsyncImage(url: URL(string: url)) { phase in
-            switch phase {
-            case .empty:
-                placeholderView
-                
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFill()
-                
-            case .failure:
-                placeholderView
-                
-            @unknown default:
-                placeholderView
+        KFImage(URL(string: url))
+            .placeholder {
+                Circle()
+                    .fill(Color(.systemGray5))
+                    .shimmer()
             }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay(
-            Circle()
-                .stroke(Color.white, lineWidth: borderWidth)
-        )
-        .shadow(color: Color.black.opacity(0.25), radius: 3, x: 0, y: 2)
-    }
-    
-    private var placeholderView: some View {
-        Circle()
-            .fill(Color(.systemGray5))
-            .shimmer()
+            .retry(maxCount: 2, interval: .seconds(1))
+            .cacheOriginalImage()
+            .fade(duration: 0.2)
+            .resizable()
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay(
+                Circle()
+                    .stroke(Color.white, lineWidth: borderWidth)
+            )
+            .shadow(color: Color.black.opacity(0.25), radius: 3, x: 0, y: 2)
     }
 }
 
@@ -66,31 +55,19 @@ struct SquareThumbnailView: View {
     }
     
     var body: some View {
-        AsyncImage(url: URL(string: url)) { phase in
-            switch phase {
-            case .empty:
-                placeholderView
-                
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFill()
-                
-            case .failure:
-                placeholderView
-                
-            @unknown default:
-                placeholderView
+        KFImage(URL(string: url))
+            .placeholder {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(Color(.systemGray5))
+                    .shimmer()
             }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-    }
-    
-    private var placeholderView: some View {
-        RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(Color(.systemGray5))
-            .shimmer()
+            .retry(maxCount: 2, interval: .seconds(1))
+            .cacheOriginalImage()
+            .fade(duration: 0.2)
+            .resizable()
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 }
 

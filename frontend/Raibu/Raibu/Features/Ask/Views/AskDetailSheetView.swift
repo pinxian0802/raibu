@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import MapKit
+import Kingfisher
 
 /// 詢問詳情 Sheet
 struct AskDetailSheetView: View {
@@ -162,21 +163,21 @@ struct AskDetailSheetView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(images) { image in
-                        AsyncImage(url: URL(string: image.thumbnailPublicUrl ?? "")) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img.resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 100, height: 100)
-                                    .clipped()
-                                    .cornerRadius(8)
-                            default:
+                        KFImage(URL(string: image.thumbnailPublicUrl ?? ""))
+                            .placeholder {
                                 Rectangle()
                                     .fill(Color.gray.opacity(0.2))
                                     .frame(width: 100, height: 100)
                                     .cornerRadius(8)
                             }
-                        }
+                            .retry(maxCount: 2, interval: .seconds(1))
+                            .cacheOriginalImage()
+                            .fade(duration: 0.2)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 100, height: 100)
+                            .clipped()
+                            .cornerRadius(8)
                     }
                 }
             }
@@ -187,19 +188,19 @@ struct AskDetailSheetView: View {
         // 作者資訊
         if let author = ask.author {
             HStack(spacing: 12) {
-                AsyncImage(url: URL(string: author.avatarUrl ?? "")) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 40, height: 40)
-                            .clipShape(Circle())
-                    default:
+                KFImage(URL(string: author.avatarUrl ?? ""))
+                    .placeholder {
                         Circle()
                             .fill(Color.gray.opacity(0.3))
                             .frame(width: 40, height: 40)
                     }
-                }
+                    .retry(maxCount: 2, interval: .seconds(1))
+                    .cacheOriginalImage()
+                    .fade(duration: 0.2)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(author.displayName)

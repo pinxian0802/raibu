@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import Kingfisher
 
 /// 編輯紀錄視圖
 struct EditRecordView: View {
@@ -109,21 +110,21 @@ struct EditRecordView: View {
                 HStack(spacing: 12) {
                     ForEach(viewModel.existingImages) { image in
                         ZStack(alignment: .topTrailing) {
-                            AsyncImage(url: URL(string: image.thumbnailPublicUrl ?? "")) { phase in
-                                switch phase {
-                                case .success(let img):
-                                    img.resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 100, height: 100)
-                                        .clipped()
-                                        .cornerRadius(8)
-                                default:
+                            KFImage(URL(string: image.thumbnailPublicUrl ?? ""))
+                                .placeholder {
                                     Rectangle()
                                         .fill(Color.gray.opacity(0.2))
                                         .frame(width: 100, height: 100)
                                         .cornerRadius(8)
                                 }
-                            }
+                                .retry(maxCount: 2, interval: .seconds(1))
+                                .cacheOriginalImage()
+                                .fade(duration: 0.2)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 100, height: 100)
+                                .clipped()
+                                .cornerRadius(8)
                             
                             // 刪除按鈕
                             Button {

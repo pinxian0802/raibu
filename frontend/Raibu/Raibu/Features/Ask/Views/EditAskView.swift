@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import Kingfisher
 
 /// 編輯詢問視圖
 struct EditAskView: View {
@@ -129,21 +130,21 @@ struct EditAskView: View {
                 HStack(spacing: 12) {
                     ForEach(viewModel.existingImages) { image in
                         ZStack(alignment: .topTrailing) {
-                            AsyncImage(url: URL(string: image.thumbnailPublicUrl ?? "")) { phase in
-                                switch phase {
-                                case .success(let img):
-                                    img.resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 80, height: 80)
-                                        .clipped()
-                                        .cornerRadius(8)
-                                default:
+                            KFImage(URL(string: image.thumbnailPublicUrl ?? ""))
+                                .placeholder {
                                     Rectangle()
                                         .fill(Color.gray.opacity(0.2))
                                         .frame(width: 80, height: 80)
                                         .cornerRadius(8)
                                 }
-                            }
+                                .retry(maxCount: 2, interval: .seconds(1))
+                                .cacheOriginalImage()
+                                .fade(duration: 0.2)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 80, height: 80)
+                                .clipped()
+                                .cornerRadius(8)
                             
                             Button {
                                 viewModel.removeImage(image)

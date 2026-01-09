@@ -7,118 +7,7 @@
 
 import SwiftUI
 import CoreLocation
-
-// MARK: - Image Cache Manager
-
-/// 圖片快取管理器 (單例)
-final class ImageCache {
-    static let shared = ImageCache()
-    
-    private var cache = NSCache<NSString, UIImage>()
-    
-    private init() {
-        // 設定快取限制
-        cache.countLimit = 100  // 最多快取 100 張圖片
-        cache.totalCostLimit = 100 * 1024 * 1024  // 最多 100MB
-    }
-    
-    func get(forKey key: String) -> UIImage? {
-        cache.object(forKey: key as NSString)
-    }
-    
-    func set(_ image: UIImage, forKey key: String) {
-        cache.setObject(image, forKey: key as NSString)
-    }
-}
-
-// MARK: - Cached Async Image
-
-/// 帶快取的非同步圖片視圖
-struct CachedAsyncImage<Content: View, Placeholder: View, ErrorView: View>: View {
-    let url: URL?
-    let content: (Image) -> Content
-    let placeholder: () -> Placeholder
-    let errorView: () -> ErrorView
-    
-    @State private var loadedImage: UIImage?
-    @State private var isLoading = true
-    @State private var loadFailed = false
-    
-    init(
-        url: URL?,
-        @ViewBuilder content: @escaping (Image) -> Content,
-        @ViewBuilder placeholder: @escaping () -> Placeholder,
-        @ViewBuilder errorView: @escaping () -> ErrorView
-    ) {
-        self.url = url
-        self.content = content
-        self.placeholder = placeholder
-        self.errorView = errorView
-    }
-    
-    var body: some View {
-        Group {
-            if let image = loadedImage {
-                content(Image(uiImage: image))
-            } else if loadFailed {
-                errorView()
-            } else {
-                placeholder()
-            }
-        }
-        .onAppear {
-            loadImage()
-        }
-    }
-    
-    private func loadImage() {
-        guard let url = url else {
-            loadFailed = true
-            isLoading = false
-            return
-        }
-        
-        let cacheKey = url.absoluteString
-        
-        // 先檢查快取
-        if let cachedImage = ImageCache.shared.get(forKey: cacheKey) {
-            loadedImage = cachedImage
-            isLoading = false
-            return
-        }
-        
-        // 如果已經有圖片或已失敗，不重新載入
-        if loadedImage != nil || loadFailed {
-            return
-        }
-        
-        // 從網路載入
-        Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let image = UIImage(data: data) {
-                    // 存入快取
-                    ImageCache.shared.set(image, forKey: cacheKey)
-                    
-                    await MainActor.run {
-                        loadedImage = image
-                        isLoading = false
-                    }
-                } else {
-                    await MainActor.run {
-                        loadFailed = true
-                        isLoading = false
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    loadFailed = true
-                    isLoading = false
-                }
-            }
-        }
-    }
-}
+import Kingfisher
 
 /// 圖片輪播視圖 (支援錨點定位和點擊跳轉)
 struct ImageCarouselView: View {
@@ -176,28 +65,17 @@ struct ImageCarouselView: View {
         VStack(spacing: 8) {
             // 圖片區
             ZStack(alignment: .bottomLeading) {
-                CachedAsyncImage(
-                    url: URL(string: image.originalPublicUrl),
-                    content: { loadedImage in
-                        loadedImage
-                            .resizable()
-                            .scaledToFit()
-                    },
-                    placeholder: {
+                KFImage(URL(string: image.originalPublicUrl))
+                    .placeholder {
                         Rectangle()
                             .fill(Color(.systemGray5))
                             .shimmer()
-                    },
-                    errorView: {
-                        Rectangle()
-                            .fill(Color(.systemGray5))
-                            .overlay(
-                                Image(systemName: "photo")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.secondary)
-                            )
                     }
-                )
+                    .retry(maxCount: 2, interval: .seconds(1))
+                    .cacheOriginalImage()
+                    .fade(duration: 0.2)
+                    .resizable()
+                    .scaledToFit()
                 
                 // 查看位置按鈕 - 只有圖片有位置資訊時顯示
                 if image.location != nil {

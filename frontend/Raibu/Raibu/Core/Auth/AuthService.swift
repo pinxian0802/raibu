@@ -44,14 +44,46 @@ class AuthService: ObservableObject {
     }
     
     private let keychainManager: KeychainManager
-    private(set) var accessToken: String?
-    
-    // Supabase Auth 配置
-    private let supabaseURL = "https://dfpecuyylrbagnwsgyfm.supabase.co"
-    private let supabaseAnonKey = "sb_publishable_L4FdiTMZvEsyAh0q1iIcVQ_TsDTK3La"
+    private var accessToken: String?
     
     init(keychainManager: KeychainManager = KeychainManager()) {
         self.keychainManager = keychainManager
+    }
+    
+    // MARK: - Token Access Methods
+    
+    /// 取得認證 Headers（封裝 Token，不直接暴露原始值）
+    func getAuthorizationHeaders() -> [String: String]? {
+        guard let token = accessToken else { return nil }
+        return ["Authorization": "Bearer \(token)"]
+    }
+    
+    /// 從 JWT Token 解析過期時間
+    private func getTokenExpirationDate(_ token: String) -> Date? {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return nil }
+        
+        // JWT payload 是 base64url 格式
+        var base64 = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        
+        // 補齊 padding
+        while base64.count % 4 != 0 {
+            base64.append("=")
+        }
+        
+        guard let payloadData = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+              let exp = json["exp"] as? Double else { return nil }
+        
+        return Date(timeIntervalSince1970: exp)
+    }
+    
+    /// 檢查 Token 是否快過期（剩餘 < 10 分鐘）
+    private func isTokenExpiringSoon(_ token: String) -> Bool {
+        guard let expDate = getTokenExpirationDate(token) else { return false }
+        return expDate.timeIntervalSinceNow < 600 // 10 分鐘
     }
     
     // MARK: - Public Methods
@@ -61,8 +93,23 @@ class AuthService: ObservableObject {
         if let token = keychainManager.getAccessToken() {
             accessToken = token
             
+            // 檢查 Token 是否快過期（< 10 分鐘），提前刷新
+            if isTokenExpiringSoon(token) {
+                do {
+                    try await refreshAccessToken()
+                    #if DEBUG
+                    print("♻️ Token 即將過期，已自動刷新")
+                    #endif
+                } catch {
+                    #if DEBUG
+                    print("⚠️ Token 刷新失敗：\(error.localizedDescription)")
+                    #endif
+                    // 刷新失敗不強制登出，讓現有 Token 繼續嘗試
+                }
+            }
+            
             // 驗證 Token 是否有效
-            if await validateToken(token) {
+            if await validateToken(accessToken ?? token) {
                 await MainActor.run {
                     authState = .authenticated
                 }
@@ -75,12 +122,10 @@ class AuthService: ObservableObject {
     
     /// 登入
     func signIn(email: String, password: String) async throws {
-        let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=password")!
-        
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: SupabaseConfig.signInURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         
         let body = [
             "email": email,
@@ -136,12 +181,10 @@ class AuthService: ObservableObject {
     
     /// 註冊（需要 Email 驗證）
     func signUp(email: String, password: String, displayName: String) async throws {
-        let url = URL(string: "\(supabaseURL)/auth/v1/signup")!
-        
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: SupabaseConfig.signUpURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         
         let body: [String: Any] = [
             "email": email,
@@ -222,12 +265,10 @@ class AuthService: ObservableObject {
     
     /// 重新發送 OTP 驗證碼
     func resendOTP(email: String) async throws {
-        let url = URL(string: "\(supabaseURL)/auth/v1/otp")!
-        
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: SupabaseConfig.otpURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         
         let body: [String: Any] = [
             "email": email,
@@ -245,12 +286,10 @@ class AuthService: ObservableObject {
     
     /// 驗證 OTP 驗證碼
     func verifyOTP(email: String, token: String) async throws {
-        let url = URL(string: "\(supabaseURL)/auth/v1/verify")!
-        
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: SupabaseConfig.verifyURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         
         let body: [String: Any] = [
             "email": email,
@@ -309,12 +348,10 @@ class AuthService: ObservableObject {
     
     /// 發送密碼重設 OTP 驗證碼（使用 recover endpoint 觸發 Reset Password 模板）
     func sendPasswordResetOTP(email: String) async throws {
-        let url = URL(string: "\(supabaseURL)/auth/v1/recover")!
-        
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: SupabaseConfig.recoverURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         
         let body: [String: Any] = [
             "email": email
@@ -355,12 +392,10 @@ class AuthService: ObservableObject {
     private var passwordResetAccessToken: String?
     
     func verifyPasswordResetCode(email: String, token: String) async throws {
-        let verifyUrl = URL(string: "\(supabaseURL)/auth/v1/verify")!
-        
-        var verifyRequest = URLRequest(url: verifyUrl)
+        var verifyRequest = URLRequest(url: SupabaseConfig.verifyURL)
         verifyRequest.httpMethod = "POST"
         verifyRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        verifyRequest.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        verifyRequest.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         
         let verifyBody: [String: Any] = [
             "email": email,
@@ -396,7 +431,7 @@ class AuthService: ObservableObject {
             throw AuthError.otpInvalid
         }
         
-        // 解析驗證成功後的 access_token 並暫存
+        // 解析驗證成功後的 access_token 並暫存（只存記憶體，不存 Keychain）
         let authResponse = try JSONDecoder().decode(AuthResponse.self, from: verifyData)
         passwordResetAccessToken = authResponse.accessToken
         
@@ -406,10 +441,8 @@ class AuthService: ObservableObject {
         print("🔑 \(authResponse.accessToken)")
         #endif
         
-        // 暫存 tokens（驗證成功但還沒改密碼）
-        keychainManager.saveAccessToken(authResponse.accessToken)
-        keychainManager.saveRefreshToken(authResponse.refreshToken)
-        accessToken = authResponse.accessToken
+        // ⚠️ 注意：不儲存到 Keychain！密碼重設完成前不應該持久化 Token
+        // 這樣可以避免 App 閃退後使用者被誤認為已登入
     }
     
     /// 更新密碼（第二步：驗證成功後設定新密碼）
@@ -418,12 +451,10 @@ class AuthService: ObservableObject {
             throw AuthError.authFailed(message: "請先驗證驗證碼")
         }
         
-        let updateUrl = URL(string: "\(supabaseURL)/auth/v1/user")!
-        
-        var updateRequest = URLRequest(url: updateUrl)
+        var updateRequest = URLRequest(url: SupabaseConfig.userURL)
         updateRequest.httpMethod = "PUT"
         updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        updateRequest.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        updateRequest.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         updateRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         
         let updateBody: [String: Any] = [
@@ -489,12 +520,10 @@ class AuthService: ObservableObject {
         print("🧪 開始測試更新密碼 API...")
         print("🔑 使用 Token: \(token.prefix(50))...")
         
-        let updateUrl = URL(string: "\(supabaseURL)/auth/v1/user")!
-        
-        var updateRequest = URLRequest(url: updateUrl)
+        var updateRequest = URLRequest(url: SupabaseConfig.userURL)
         updateRequest.httpMethod = "PUT"
         updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        updateRequest.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        updateRequest.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         updateRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         
         let updateBody: [String: Any] = [
@@ -610,12 +639,10 @@ class AuthService: ObservableObject {
             throw AuthError.noRefreshToken
         }
         
-        let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token")!
-        
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: SupabaseConfig.refreshTokenURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         
         let body = ["refresh_token": refreshToken]
         request.httpBody = try JSONEncoder().encode(body)
@@ -637,10 +664,8 @@ class AuthService: ObservableObject {
     // MARK: - Private Methods
     
     private func validateToken(_ token: String) async -> Bool {
-        let url = URL(string: "\(supabaseURL)/auth/v1/user")!
-        
-        var request = URLRequest(url: url)
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        var request = URLRequest(url: SupabaseConfig.userURL)
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         
         do {
@@ -666,6 +691,27 @@ class AuthService: ObservableObject {
         } catch {
             return false
         }
+    }
+    
+    // MARK: - Network Error Handling
+    
+    /// 將 URLError 轉換為使用者友善的錯誤訊息
+    static func handleNetworkError(_ error: Error) -> AuthError {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet:
+                return .networkError("請檢查網路連線")
+            case .timedOut:
+                return .networkError("連線逾時，請稍後再試")
+            case .cannotFindHost, .cannotConnectToHost:
+                return .networkError("無法連接伺服器，請稍後再試")
+            case .networkConnectionLost:
+                return .networkError("網路連線中斷，請重試")
+            default:
+                return .networkError("網路錯誤：\(urlError.localizedDescription)")
+            }
+        }
+        return .networkError("發生未知錯誤：\(error.localizedDescription)")
     }
 }
 
@@ -839,6 +885,7 @@ enum AuthError: LocalizedError {
     case refreshFailed
     case resendFailed
     case invalidCallback
+    case networkError(String)  // 新增：網路錯誤
     
     var errorDescription: String? {
         switch self {
@@ -862,6 +909,8 @@ enum AuthError: LocalizedError {
             return "重新發送驗證碼失敗"
         case .invalidCallback:
             return "驗證連結無效"
+        case .networkError(let message):
+            return message
         }
     }
 }

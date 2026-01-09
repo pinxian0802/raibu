@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MapKit
+import Kingfisher
 
 /// 紀錄詳情 Sheet 視圖
 struct RecordDetailSheetView: View {
@@ -171,13 +172,8 @@ struct RecordDetailSheetView: View {
     
     private func authorView(author: User) -> some View {
         HStack(spacing: 10) {
-            AsyncImage(url: URL(string: author.avatarUrl ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
+            KFImage(URL(string: author.avatarUrl ?? ""))
+                .placeholder {
                     Circle()
                         .fill(Color(.systemGray4))
                         .overlay(
@@ -185,9 +181,13 @@ struct RecordDetailSheetView: View {
                                 .foregroundColor(.secondary)
                         )
                 }
-            }
-            .frame(width: 36, height: 36)
-            .clipShape(Circle())
+                .retry(maxCount: 2, interval: .seconds(1))
+                .cacheOriginalImage()
+                .fade(duration: 0.2)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 36, height: 36)
+                .clipShape(Circle())
             
             Text(author.displayName)
                 .font(.subheadline.weight(.medium))
@@ -292,16 +292,17 @@ struct ReplyRowView: View {
             HStack {
                 if let author = reply.author {
                     HStack(spacing: 8) {
-                        AsyncImage(url: URL(string: author.avatarUrl ?? "")) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().scaledToFill()
-                            default:
+                        KFImage(URL(string: author.avatarUrl ?? ""))
+                            .placeholder {
                                 Circle().fill(Color(.systemGray4))
                             }
-                        }
-                        .frame(width: 28, height: 28)
-                        .clipShape(Circle())
+                            .retry(maxCount: 2, interval: .seconds(1))
+                            .cacheOriginalImage()
+                            .fade(duration: 0.2)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 28, height: 28)
+                            .clipShape(Circle())
                         
                         Text(author.displayName)
                             .font(.subheadline.weight(.medium))
@@ -324,18 +325,17 @@ struct ReplyRowView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(images) { image in
-                            AsyncImage(url: URL(string: image.thumbnailPublicUrl)) { phase in
-                                switch phase {
-                                case .success(let loadedImage):
-                                    loadedImage
-                                        .resizable()
-                                        .scaledToFill()
-                                default:
+                            KFImage(URL(string: image.thumbnailPublicUrl))
+                                .placeholder {
                                     Rectangle().fill(Color(.systemGray5))
                                 }
-                            }
-                            .frame(width: 60, height: 60)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .retry(maxCount: 2, interval: .seconds(1))
+                                .cacheOriginalImage()
+                                .fade(duration: 0.2)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
                     }
                 }

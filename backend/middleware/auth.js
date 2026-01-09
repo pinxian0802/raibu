@@ -12,12 +12,6 @@ const { Errors } = require('../utils/errorCodes');
 function authenticate(required = true) {
   return async (req, res, next) => {
     try {
-      // 🧪 測試模式：如果環境變數有設定 TEST_USER_ID，則直接模擬該用戶
-      if (process.env.NODE_ENV !== 'production' && process.env.TEST_USER_ID) {
-        req.user = { id: process.env.TEST_USER_ID };
-        return next();
-      }
-
       const authHeader = req.headers.authorization;
       
       if (!authHeader || !authHeader.startsWith('Bearer ')) {

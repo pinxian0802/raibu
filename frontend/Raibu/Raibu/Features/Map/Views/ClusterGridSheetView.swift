@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Kingfisher
 
 /// 群集 Sheet 視圖 - 使用 NavigationStack 管理內部導航
 struct ClusterGridSheetView: View {
@@ -149,30 +150,19 @@ struct ClusterGridSheetView: View {
     @ViewBuilder
     private func gridImageView(_ item: ClusterItem, size: CGFloat) -> some View {
         if case .recordImage(let image) = item {
-            AsyncImage(url: URL(string: image.thumbnailPublicUrl)) { phase in
-                switch phase {
-                case .success(let loadedImage):
-                    loadedImage
-                        .resizable()
-                        .scaledToFill()
-                case .empty:
+            KFImage(URL(string: image.thumbnailPublicUrl))
+                .placeholder {
                     Rectangle()
                         .fill(Color(.systemGray5))
                         .shimmer()
-                case .failure:
-                    Rectangle()
-                        .fill(Color(.systemGray5))
-                        .overlay(
-                            Image(systemName: "photo")
-                                .foregroundColor(.secondary)
-                        )
-                @unknown default:
-                    Rectangle()
-                        .fill(Color(.systemGray5))
                 }
-            }
-            .frame(width: size, height: size)
-            .clipped()
+                .retry(maxCount: 2, interval: .seconds(1))
+                .cacheOriginalImage()
+                .fade(duration: 0.2)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipped()
         }
     }
     
@@ -367,13 +357,8 @@ struct RecordDetailContentView: View {
     
     private func authorView(author: User) -> some View {
         HStack(spacing: 10) {
-            AsyncImage(url: URL(string: author.avatarUrl ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
+            KFImage(URL(string: author.avatarUrl ?? ""))
+                .placeholder {
                     Circle()
                         .fill(Color(.systemGray4))
                         .overlay(
@@ -381,9 +366,13 @@ struct RecordDetailContentView: View {
                                 .foregroundColor(.secondary)
                         )
                 }
-            }
-            .frame(width: 36, height: 36)
-            .clipShape(Circle())
+                .retry(maxCount: 2, interval: .seconds(1))
+                .cacheOriginalImage()
+                .fade(duration: 0.2)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 36, height: 36)
+                .clipShape(Circle())
             
             Text(author.displayName)
                 .font(.subheadline.weight(.medium))
