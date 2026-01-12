@@ -55,59 +55,8 @@ struct MainTabView: View {
                 recordRepository: container.recordRepository
             )
         }
-        #if DEBUG
-        .overlay(alignment: .topTrailing) {
-            PasswordTestButton()
-                .padding(.top, 50)
-                .padding(.trailing, 10)
-        }
-        #endif
     }
 }
-
-#if DEBUG
-// MARK: - Debug: 密碼更新測試按鈕
-struct PasswordTestButton: View {
-    @EnvironmentObject var authService: AuthService
-    @State private var showTestAlert = false
-    @State private var testPassword = ""
-    @State private var testResult = ""
-    @State private var showResultAlert = false
-    
-    var body: some View {
-        Button(action: { showTestAlert = true }) {
-            Image(systemName: "hammer.fill")
-                .foregroundColor(.white)
-                .padding(8)
-                .background(Color.purple)
-                .clipShape(Circle())
-        }
-        .alert("🧪 測試更新密碼 API", isPresented: $showTestAlert) {
-            TextField("輸入測試密碼", text: $testPassword)
-            Button("測試") {
-                Task {
-                    // 執行測試並獲得結果字串
-                    let result = await authService.testUpdatePassword(testPassword)
-                    // 更新結果狀態並顯示結果 Alert
-                    await MainActor.run {
-                        testResult = result
-                        showResultAlert = true
-                    }
-                }
-            }
-            Button("取消", role: .cancel) { }
-        } message: {
-            Text("這會直接呼叫密碼更新 API")
-        }
-        // 新增：顯示測試結果的 Alert
-        .alert("測試結果", isPresented: $showResultAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(testResult)
-        }
-    }
-}
-#endif
 
 // MARK: - Preview
 

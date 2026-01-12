@@ -16,3 +16,6 @@ backend/.env
 # Xcode 用戶資料
 *.xcuserstate
 xcuserdata/
+
+# iOS 敏感設定檔（包含 API Key）
+frontend/raibu/raibu/Core/Auth/SupabaseConfig.swift
