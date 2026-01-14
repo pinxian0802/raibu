@@ -5,15 +5,15 @@
 //  Created on 2025/12/20.
 //
 
-import SwiftUI
 import MapKit
+import SwiftUI
 
 // MARK: - Map Container View
 
 /// 地圖主容器視圖
 struct MapContainerView: View {
     @EnvironmentObject var container: DIContainer
-    
+
     var body: some View {
         MapContentView(container: container)
     }
@@ -27,29 +27,32 @@ struct MapContentView: View {
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @StateObject private var viewModel: MapViewModel
     @StateObject private var toastManager = ToastManager()
-    
+
     @State private var searchText = ""
+    @State private var isSearchActive = false
     @State private var createAskLocation: CreateAskLocation?
-    
+    @State private var searchLocation: SearchLocationMarker?
+
     // Sheet 控制
     @State private var selectedDetailItem: DetailSheetItem?
     @State private var clusterSheetData: ClusterSheetData?
-    
+
     init(container: DIContainer) {
         self.container = container
-        _viewModel = StateObject(wrappedValue: MapViewModel(
-            recordRepository: container.recordRepository,
-            askRepository: container.askRepository,
-            clusteringService: container.clusteringService,
-            locationManager: container.locationManager
-        ))
+        _viewModel = StateObject(
+            wrappedValue: MapViewModel(
+                recordRepository: container.recordRepository,
+                askRepository: container.askRepository,
+                clusteringService: container.clusteringService,
+                locationManager: container.locationManager
+            ))
     }
-    
+
     var body: some View {
         ZStack {
             // 地圖
             mapView
-            
+
             // 覆蓋層 UI
             VStack {
                 topControls
@@ -85,12 +88,15 @@ struct MapContentView: View {
             .environmentObject(navigationCoordinator)
             .environmentObject(container)
         }
-        .sheet(item: $createAskLocation, onDismiss: {
-            // 刷新地圖資料以顯示新建立的詢問
-            Task {
-                await viewModel.fetchDataForCurrentRegion()
+        .sheet(
+            item: $createAskLocation,
+            onDismiss: {
+                // 刷新地圖資料以顯示新建立的詢問
+                Task {
+                    await viewModel.fetchDataForCurrentRegion()
+                }
             }
-        }) { location in
+        ) { location in
             CreateAskFullView(
                 initialLocation: location.coordinate,
                 uploadService: container.uploadService,
@@ -106,7 +112,7 @@ struct MapContentView: View {
                 if let targetMode = navigationCoordinator.targetMapMode {
                     viewModel.switchMode(to: targetMode)
                 }
-                
+
                 // 移動到目標座標
                 withAnimation {
                     viewModel.region = MKCoordinateRegion(
@@ -118,14 +124,15 @@ struct MapContentView: View {
             }
         }
     }
-    
+
     // MARK: - Map View
-    
+
     private var mapView: some View {
         MapViewRepresentable(
             region: $viewModel.region,
             clusters: viewModel.clusters,
             currentMode: viewModel.currentMode,
+            searchLocation: searchLocation,
             onClusterTapped: { cluster in
                 handleClusterTapped(cluster)
             },
@@ -136,14 +143,17 @@ struct MapContentView: View {
             },
             onRegionChanged: { mapSize in
                 viewModel.onRegionChanged(viewModel.region, mapSize: mapSize)
+            },
+            onMapTapped: {
+                // 點擊地圖時關閉搜尋建議列表
+                isSearchActive = false
             }
         )
         .ignoresSafeArea()
     }
 
-    
     // MARK: - Cluster Handling
-    
+
     private func handleClusterTapped(_ cluster: ClusterResult) {
         let currentZoom = log2(360.0 / viewModel.region.span.longitudeDelta)
         let action = container.clusteringService.handleClusterTap(
@@ -151,7 +161,7 @@ struct MapContentView: View {
             currentZoom: currentZoom,
             currentSpanDelta: viewModel.region.span.latitudeDelta
         )
-        
+
         switch action {
         case .zoomIn(let center):
             withAnimation {
@@ -166,7 +176,7 @@ struct MapContentView: View {
                     )
                 )
             }
-            
+
         case .showBottomSheet(let items):
             if items.count == 1 {
                 handleSingleItemTap(items[0])
@@ -175,65 +185,57 @@ struct MapContentView: View {
             }
         }
     }
-    
+
     private func handleSingleItemTap(_ item: ClusterItem) {
         switch item {
         case .recordImage(let image):
             // 傳遞 displayOrder 作為初始圖片索引
             selectedDetailItem = .record(id: image.recordId, imageIndex: image.displayOrder)
-            
+
         case .ask(let ask):
             selectedDetailItem = .ask(id: ask.id)
         }
     }
-    
+
     // MARK: - Top Controls
-    
+
     private var topControls: some View {
-        VStack(spacing: 12) {
-            HStack {
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                    
-                    TextField("搜尋地點", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .submitLabel(.search)
-                        .onSubmit {
-                            Task {
-                                await viewModel.searchAndMoveTo(query: searchText)
-                            }
-                        }
-                    
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                    }
+        MapSearchBar(
+            searchText: $searchText,
+            isSearchActive: $isSearchActive,
+            mapRegion: viewModel.region,
+            onSearchResultSelected: { result in
+                // 設定搜尋標記
+                searchLocation = SearchLocationMarker(
+                    coordinate: result.coordinate,
+                    title: result.mapItem.name ?? searchText,
+                    subtitle: result.mapItem.placemark.title
+                )
+
+                // 關閉搜尋建議列表
+                isSearchActive = false
+
+                // 移動地圖到搜尋結果（使用根據地點大小調整的縮放等級）
+                withAnimation {
+                    viewModel.region = result.adjustedRegion
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color(.systemBackground))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.1), radius: 5)
+            },
+            onSearchCleared: {
+                // 清除地圖上的搜尋標記
+                searchLocation = nil
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-        }
+        )
     }
-    
+
     // MARK: - Bottom Controls
-    
+
     private var bottomControls: some View {
         VStack(spacing: 12) {
             HStack {
                 modeSwitcher
-                
+
                 Spacer()
-                
+
                 VStack(spacing: 12) {
                     // 定位按鈕
                     Button {
@@ -253,7 +255,7 @@ struct MapContentView: View {
             .padding(.bottom, 30)
         }
     }
-    
+
     private var modeSwitcher: some View {
         HStack(spacing: 0) {
             ForEach(MapMode.allCases, id: \.self) { mode in
@@ -271,9 +273,8 @@ struct MapContentView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(
-                        viewModel.currentMode == mode ?
-                        (mode == .record ? Color.blue : Color.orange) :
-                        Color.clear
+                        viewModel.currentMode == mode
+                            ? (mode == .record ? Color.blue : Color.orange) : Color.clear
                     )
                     .cornerRadius(20)
                 }
@@ -292,7 +293,7 @@ struct MapContentView: View {
 enum DetailSheetItem: Identifiable {
     case record(id: String, imageIndex: Int)
     case ask(id: String)
-    
+
     var id: String {
         switch self {
         case .record(let id, let imageIndex): return "record-\(id)-\(imageIndex)"

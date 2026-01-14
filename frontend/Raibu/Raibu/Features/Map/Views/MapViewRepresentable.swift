@@ -14,14 +14,19 @@ struct MapViewRepresentable: UIViewRepresentable {
     @Binding var region: MKCoordinateRegion
     let clusters: [ClusterResult]
     let currentMode: MapMode
+    let searchLocation: SearchLocationMarker?
     let onClusterTapped: (ClusterResult) -> Void
     let onLongPress: (CLLocationCoordinate2D) -> Void
     let onRegionChanged: (CGSize) -> Void
+    let onMapTapped: () -> Void
     
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
+        
+        // 顯示景點標記（POI）
+        mapView.pointOfInterestFilter = .includingAll
         
         // 長按手勢
         let longPress = UILongPressGestureRecognizer(
@@ -30,6 +35,14 @@ struct MapViewRepresentable: UIViewRepresentable {
         )
         longPress.minimumPressDuration = 0.5
         mapView.addGestureRecognizer(longPress)
+        
+        // 點擊手勢（用於關閉搜尋建議）
+        let tapGesture = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(context.coordinator.handleTap(_:))
+        )
+        tapGesture.delegate = context.coordinator
+        mapView.addGestureRecognizer(tapGesture)
         
         return mapView
     }
@@ -41,6 +54,9 @@ struct MapViewRepresentable: UIViewRepresentable {
            abs(currentRegion.center.longitude - region.center.longitude) > 0.0001 {
             mapView.setRegion(region, animated: true)
         }
+        
+        // 更新搜尋位置標記
+        updateSearchLocationAnnotation(mapView: mapView)
         
         // 差異比對更新標註（避免閃爍）
         let existingAnnotations = mapView.annotations.compactMap { $0 as? ClusterAnnotation }
@@ -64,6 +80,43 @@ struct MapViewRepresentable: UIViewRepresentable {
         }
     }
     
+    /// 更新搜尋位置標記
+    private func updateSearchLocationAnnotation(mapView: MKMapView) {
+        let existingSearchAnnotations = mapView.annotations.compactMap { $0 as? SearchLocationAnnotation }
+        
+        // 檢查是否需要更新標記
+        if let location = searchLocation {
+            // 檢查是否已經有相同位置的標記
+            let existingAnnotation = existingSearchAnnotations.first { annotation in
+                annotation.coordinate.latitude == location.coordinate.latitude &&
+                annotation.coordinate.longitude == location.coordinate.longitude
+            }
+            
+            // 如果已經存在相同位置的標記，不需要更新
+            if existingAnnotation != nil {
+                return
+            }
+            
+            // 移除舊的標記
+            if !existingSearchAnnotations.isEmpty {
+                mapView.removeAnnotations(existingSearchAnnotations)
+            }
+            
+            // 加入新標記
+            let annotation = SearchLocationAnnotation(
+                coordinate: location.coordinate,
+                title: location.title,
+                subtitle: location.subtitle
+            )
+            mapView.addAnnotation(annotation)
+        } else {
+            // 沒有搜尋位置時，移除所有搜尋標記
+            if !existingSearchAnnotations.isEmpty {
+                mapView.removeAnnotations(existingSearchAnnotations)
+            }
+        }
+    }
+    
     /// 產生群集的唯一識別 ID
     private func clusterIdentifier(for cluster: ClusterResult) -> String {
         let itemIds = cluster.items.map { $0.id }.sorted().joined(separator: "_")
@@ -76,11 +129,15 @@ struct MapViewRepresentable: UIViewRepresentable {
     
     // MARK: - Coordinator
     
-    class Coordinator: NSObject, MKMapViewDelegate {
+    class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var parent: MapViewRepresentable
         
         init(_ parent: MapViewRepresentable) {
             self.parent = parent
+        }
+        
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            parent.onMapTapped()
         }
         
         @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
@@ -102,6 +159,25 @@ struct MapViewRepresentable: UIViewRepresentable {
         }
         
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            // 處理搜尋位置標記
+            if let searchAnnotation = annotation as? SearchLocationAnnotation {
+                let identifier = "SearchLocation"
+                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+                
+                if annotationView == nil {
+                    annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                    annotationView?.canShowCallout = true
+                    annotationView?.animatesWhenAdded = true
+                }
+                
+                annotationView?.annotation = annotation
+                annotationView?.markerTintColor = .systemRed
+                annotationView?.glyphImage = UIImage(systemName: "mappin")
+                
+                return annotationView
+            }
+            
+            // 處理 Cluster 標註
             guard let clusterAnnotation = annotation as? ClusterAnnotation else { return nil }
             
             let cluster = clusterAnnotation.cluster
