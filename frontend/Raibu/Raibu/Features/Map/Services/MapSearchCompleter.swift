@@ -200,16 +200,22 @@ class MapSearchCompleter: NSObject {
 
 extension MapSearchCompleter: MKLocalSearchCompleterDelegate {
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        suggestions = completer.results
+        // 過濾掉查詢型建議（Query Suggestions），只保留具體地點（POI）
+        // 查詢型建議的特徵是副標題包含「搜尋附近」這類提示文字
+        let filteredResults = completer.results.filter { result in
+            !result.subtitle.contains("搜尋附近")
+        }
+
+        suggestions = filteredResults
         isSearching = false
         hasSearched = true  // 標記已執行過搜尋
 
         // 詳細 Log 輸出
         print("\n📝 ====== 搜尋建議更新 ======")
         print("查詢文字: \(currentQuery)")
-        print("總共 \(completer.results.count) 個建議:")
+        print("原始結果: \(completer.results.count) 個，過濾後: \(filteredResults.count) 個")
 
-        for (index, result) in completer.results.enumerated() {
+        for (index, result) in filteredResults.enumerated() {
             print("  [\(index)] \(result.title)")
             print("       副標題: \(result.subtitle)")
         }

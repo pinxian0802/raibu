@@ -32,7 +32,7 @@ struct MapSearchBar: View {
             // 搜尋建議下拉選單
             if showSuggestions {
                 suggestionsDropdown
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
             }
         }
         .padding(.horizontal, 16)
@@ -40,6 +40,10 @@ struct MapSearchBar: View {
         .animation(.easeInOut(duration: 0.2), value: showSuggestions)
         .onChange(of: searchText) { _, newValue in
             searchCompleter.updateQuery(newValue, in: mapRegion)
+            // 當搜尋文字被清空時，清除地圖上的搜尋標記
+            if newValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                onSearchCleared()
+            }
         }
         .onChange(of: isTextFieldFocused) { _, newValue in
             if newValue {
@@ -100,8 +104,12 @@ struct MapSearchBar: View {
 
     private var suggestionsDropdown: some View {
         VStack(spacing: 0) {
-            if searchCompleter.suggestions.isEmpty {
-                // 沒有建議地點
+            if searchCompleter.isSearching {
+                // 搜尋中顯示 loading
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if searchCompleter.suggestions.isEmpty {
+                // 搜尋結束後沒有建議地點
                 Text("沒有建議地點")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
