@@ -14,6 +14,7 @@ enum AuthState {
     case unauthenticated
     case awaitingEmailVerification(email: String)
     case awaitingPasswordReset(email: String)
+    case awaitingProfileSetup  // 新用戶完善個人資料（設定頭貼）
     case authenticated
 }
 
@@ -45,6 +46,19 @@ class AuthService: ObservableObject {
     
     private let keychainManager: KeychainManager
     private var accessToken: String?
+    
+    // MARK: - Test Mode Configuration (DEBUG only)
+    #if DEBUG
+    /// 測試用 Email 後綴（符合此後綴的 Email 可跳過真實驗證）
+    private static let testEmailSuffix = "@test.raibu.app"
+    /// 測試用驗證碼
+    private static let testOTPCode = "123456"
+    
+    /// 檢查是否為測試用 Email
+    private func isTestEmail(_ email: String) -> Bool {
+        return email.lowercased().hasSuffix(Self.testEmailSuffix)
+    }
+    #endif
     
     init(keychainManager: KeychainManager = KeychainManager()) {
         self.keychainManager = keychainManager
@@ -181,6 +195,31 @@ class AuthService: ObservableObject {
     
     /// 註冊（需要 Email 驗證）
     func signUp(email: String, password: String, displayName: String) async throws {
+        // 🧪 DEBUG: 測試用 Email 跳過真實註冊
+        #if DEBUG
+        if isTestEmail(email) {
+            print("🧪 [TEST MODE] 使用測試 Email: \(email)")
+            print("🧪 [TEST MODE] 跳過 Supabase 註冊，直接進入驗證頁面")
+            print("🧪 [TEST MODE] 請使用驗證碼: \(Self.testOTPCode)")
+            
+            // 模擬短暫延遲
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 秒
+            
+            await MainActor.run {
+                // 建立測試用 User
+                currentUser = User(
+                    id: "test-user-\(UUID().uuidString.prefix(8))",
+                    displayName: displayName,
+                    avatarUrl: nil,
+                    totalViews: 0,
+                    createdAt: Date()
+                )
+                authState = .awaitingEmailVerification(email: email)
+            }
+            return
+        }
+        #endif
+        
         var request = URLRequest(url: SupabaseConfig.signUpURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -265,6 +304,16 @@ class AuthService: ObservableObject {
     
     /// 重新發送 OTP 驗證碼
     func resendOTP(email: String) async throws {
+        // 🧪 DEBUG: 測試用 Email 跳過真實發送
+        #if DEBUG
+        if isTestEmail(email) {
+            print("🧪 [TEST MODE] 跳過重新發送 OTP")
+            print("🧪 [TEST MODE] 請使用驗證碼: \(Self.testOTPCode)")
+            try await Task.sleep(nanoseconds: 500_000_000) // 模擬延遲
+            return
+        }
+        #endif
+        
         var request = URLRequest(url: SupabaseConfig.otpURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -286,6 +335,30 @@ class AuthService: ObservableObject {
     
     /// 驗證 OTP 驗證碼
     func verifyOTP(email: String, token: String) async throws {
+        // 🧪 DEBUG: 測試用 Email + 驗證碼跳過真實驗證
+        #if DEBUG
+        if isTestEmail(email) {
+            print("🧪 [TEST MODE] 驗證測試 Email: \(email)")
+            
+            // 檢查驗證碼是否正確
+            if token == Self.testOTPCode {
+                print("🧪 [TEST MODE] 驗證碼正確！進入個人資料設定頁面")
+                
+                // 模擬短暫延遲
+                try await Task.sleep(nanoseconds: 500_000_000) // 0.5 秒
+                
+                await MainActor.run {
+                    // 新用戶需要完善個人資料（設定頭貼）
+                    authState = .awaitingProfileSetup
+                }
+                return
+            } else {
+                print("🧪 [TEST MODE] 驗證碼錯誤！正確驗證碼為: \(Self.testOTPCode)")
+                throw AuthError.otpInvalid
+            }
+        }
+        #endif
+        
         var request = URLRequest(url: SupabaseConfig.verifyURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -335,7 +408,8 @@ class AuthService: ObservableObject {
         
         await MainActor.run {
             currentUser = authResponse.user
-            authState = .authenticated
+            // 新用戶需要完善個人資料（設定頭貼）
+            authState = .awaitingProfileSetup
         }
     }
     
@@ -620,6 +694,16 @@ class AuthService: ObservableObject {
     /// 取消等待驗證狀態（返回登入）
     func cancelVerificationPending() {
         authState = .unauthenticated
+    }
+    
+    /// 完成個人資料設定（設定頭貼後）
+    func completeProfileSetup() {
+        authState = .authenticated
+    }
+    
+    /// 跳過個人資料設定
+    func skipProfileSetup() {
+        authState = .authenticated
     }
     
     /// 登出

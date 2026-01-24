@@ -127,4 +127,37 @@ function getExtensionFromMime(mimeType) {
   return map[mimeType] || 'jpg';
 }
 
+/**
+ * API A-2: 頭貼上傳授權
+ * POST /api/v1/upload/avatar
+ * 為使用者頭貼生成上傳憑證
+ */
+router.post('/avatar', requireAuth, asyncHandler(async (req, res) => {
+  const { file_type } = req.body;
+  const userId = req.user.id;
+
+  // 驗證檔案類型
+  const fileType = file_type || 'image/jpeg';
+  if (!ALLOWED_TYPES.includes(fileType)) {
+    throw Errors.invalidArgument(`不支援的圖片格式: ${fileType}`, {
+      allowed: ALLOWED_TYPES,
+    });
+  }
+
+  const uploadId = uuidv4();
+  const avatarKey = require('../utils/r2Helpers').generateAvatarKey(uploadId);
+
+  // 生成 Presigned URL
+  const uploadUrl = await generatePresignedUploadUrl(avatarKey, 'image/jpeg', PRESIGNED_URL_EXPIRES);
+  
+  // 生成公開 URL
+  const publicUrl = getPublicUrl(avatarKey);
+
+  res.json({
+    upload_id: uploadId,
+    upload_url: uploadUrl,
+    public_url: publicUrl,
+  });
+}));
+
 module.exports = router;

@@ -89,6 +89,15 @@ function generateImageKey(userId, uploadId, type, extension = 'jpg') {
 }
 
 /**
+ * 生成頭貼用的 R2 Key
+ * @param {string} uploadId - 上傳 ID (UUID)
+ * @returns {string} R2 Key
+ */
+function generateAvatarKey(uploadId) {
+  return `avatars/${uploadId}.jpg`;
+}
+
+/**
  * 解析 R2 Key 取得相關資訊
  * @param {string} key - R2 Key
  * @returns {object} { userId, uploadId, type, extension }
@@ -112,5 +121,6 @@ module.exports = {
   deleteObjects,
   getPublicUrl,
   generateImageKey,
+  generateAvatarKey,
   parseImageKey,
 };

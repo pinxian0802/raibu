@@ -11,6 +11,7 @@ import Foundation
 enum APIEndpoint {
     // MARK: - 上傳模組 (Module A)
     case uploadRequest
+    case uploadAvatar
     
     // MARK: - 紀錄模組 (Module B)
     case createRecord
@@ -33,6 +34,7 @@ enum APIEndpoint {
     
     // MARK: - 使用者模組 (Module E)
     case getMe
+    case updateMe
     case getMyRecords
     case getMyAsks
     
@@ -62,6 +64,8 @@ enum APIEndpoint {
         // 上傳
         case .uploadRequest:
             return "/upload/request"
+        case .uploadAvatar:
+            return "/upload/avatar"
             
         // 紀錄
         case .createRecord:
@@ -97,6 +101,8 @@ enum APIEndpoint {
             
         // 使用者
         case .getMe:
+            return "/users/me"
+        case .updateMe:
             return "/users/me"
         case .getMyRecords:
             return "/users/me/records"

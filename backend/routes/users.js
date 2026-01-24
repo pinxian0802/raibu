@@ -173,4 +173,38 @@ router.get('/me/asks', requireAuth, asyncHandler(async (req, res) => {
   res.json({ asks: formattedAsks });
 }));
 
+/**
+ * API E-4: 更新個人資料
+ * PATCH /api/v1/users/me
+ */
+router.patch('/me', requireAuth, asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { avatar_url, display_name } = req.body;
+
+  // 建立更新物件（只更新有傳入的欄位）
+  const updates = {};
+  if (avatar_url !== undefined) {
+    updates.avatar_url = avatar_url;
+  }
+  if (display_name !== undefined) {
+    updates.display_name = display_name;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw Errors.invalidArgument('至少需要提供一個要更新的欄位');
+  }
+
+  const { error } = await supabase
+    .from('users')
+    .update(updates)
+    .eq('id', userId);
+
+  if (error) {
+    console.error('Failed to update user:', error);
+    throw Errors.internal('更新個人資料失敗');
+  }
+
+  res.json({ success: true });
+}));
+
 module.exports = router;

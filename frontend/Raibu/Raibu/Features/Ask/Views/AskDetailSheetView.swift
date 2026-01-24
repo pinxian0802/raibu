@@ -5,36 +5,37 @@
 //  Created on 2025/12/20.
 //
 
-import SwiftUI
 import Combine
-import MapKit
 import Kingfisher
+import MapKit
+import SwiftUI
 
 /// 詢問詳情 Sheet
 struct AskDetailSheetView: View {
     let askId: String
     let askRepository: AskRepository
     let replyRepository: ReplyRepository
-    
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @StateObject private var viewModel: AskDetailViewModel
-    
+
     @State private var showDeleteConfirmation = false
     @State private var showEditSheet = false
     @State private var showReplySheet = false
-    
+
     init(askId: String, askRepository: AskRepository, replyRepository: ReplyRepository) {
         self.askId = askId
         self.askRepository = askRepository
         self.replyRepository = replyRepository
-        _viewModel = StateObject(wrappedValue: AskDetailViewModel(
-            askId: askId,
-            askRepository: askRepository,
-            replyRepository: replyRepository
-        ))
+        _viewModel = StateObject(
+            wrappedValue: AskDetailViewModel(
+                askId: askId,
+                askRepository: askRepository,
+                replyRepository: replyRepository
+            ))
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // 拖曳指示條
@@ -43,91 +44,91 @@ struct AskDetailSheetView: View {
                 .frame(width: 36, height: 5)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
-            
+
             NavigationView {
                 ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if viewModel.isLoading {
-                        AskDetailSkeleton()
-                    } else if let ask = viewModel.ask {
-                        askContent(ask)
-                    } else if let error = viewModel.errorMessage {
-                        errorView(error)
-                    } else {
-                        // Fallback: 確保不會有空白狀態
-                        AskDetailSkeleton()
+                    VStack(alignment: .leading, spacing: 16) {
+                        if viewModel.isLoading {
+                            AskDetailSkeleton()
+                        } else if let ask = viewModel.ask {
+                            askContent(ask)
+                        } else if let error = viewModel.errorMessage {
+                            errorView(error)
+                        } else {
+                            // Fallback: 確保不會有空白狀態
+                            AskDetailSkeleton()
+                        }
                     }
+                    .padding()
                 }
-                .padding()
-            }
-            .navigationTitle("詢問詳情")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if viewModel.ask?.userId == viewModel.currentUserId {
-                        Menu {
-                            Button {
-                                showEditSheet = true
-                            } label: {
-                                Label("編輯", systemImage: "pencil")
-                            }
-                            
-                            Button(role: .destructive) {
-                                showDeleteConfirmation = true
-                            } label: {
-                                Label("刪除", systemImage: "trash")
-                            }
-                            
-                            if viewModel.ask?.status == .active {
+                .navigationTitle("詢問詳情")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        if viewModel.ask?.userId == viewModel.currentUserId {
+                            Menu {
                                 Button {
-                                    Task { await viewModel.resolveAsk() }
+                                    showEditSheet = true
                                 } label: {
-                                    Label("標記為已解決", systemImage: "checkmark.circle")
+                                    Label("編輯", systemImage: "pencil")
                                 }
+
+                                Button(role: .destructive) {
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    Label("刪除", systemImage: "trash")
+                                }
+
+                                if viewModel.ask?.status == .active {
+                                    Button {
+                                        Task { await viewModel.resolveAsk() }
+                                    } label: {
+                                        Label("標記為已解決", systemImage: "checkmark.circle")
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
                             }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
                         }
                     }
                 }
-            }
-            .alert("確定刪除？", isPresented: $showDeleteConfirmation) {
-                Button("取消", role: .cancel) {}
-                Button("刪除", role: .destructive) {
-                    Task {
-                        await viewModel.deleteAsk()
-                        dismiss()
+                .alert("確定刪除？", isPresented: $showDeleteConfirmation) {
+                    Button("取消", role: .cancel) {}
+                    Button("刪除", role: .destructive) {
+                        Task {
+                            await viewModel.deleteAsk()
+                            dismiss()
+                        }
                     }
+                } message: {
+                    Text("確定要刪除此詢問嗎？此動作無法復原。")
                 }
-            } message: {
-                Text("確定要刪除此詢問嗎？此動作無法復原。")
+                .sheet(isPresented: $showReplySheet) {
+                    ReplyCreateView(
+                        recordId: nil,
+                        askId: askId,
+                        onReplyCreated: {
+                            Task { await viewModel.loadReplies() }
+                        }
+                    )
+                    .environmentObject(DIContainer())
+                }
             }
-            .sheet(isPresented: $showReplySheet) {
-                ReplyCreateView(
-                    recordId: nil,
-                    askId: askId,
-                    onReplyCreated: {
-                        Task { await viewModel.loadReplies() }
-                    }
-                )
-                .environmentObject(DIContainer())
+            .task {
+                await viewModel.loadAsk()
             }
-        }
-        .task {
-            await viewModel.loadAsk()
-        }
-        } // VStack
+        }  // VStack
     }
-    
+
     // MARK: - Ask Content
-    
+
     @ViewBuilder
     private func askContent(_ ask: Ask) -> some View {
         // 問題
         VStack(alignment: .leading, spacing: 12) {
             Text(ask.question)
                 .font(.title3.weight(.medium))
-            
+
             // 範圍資訊
             HStack(spacing: 8) {
                 Image(systemName: "scope")
@@ -135,21 +136,22 @@ struct AskDetailSheetView: View {
                 Text("詢問範圍：\(ask.radiusMeters)m")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 Spacer()
-                
+
                 // 在地圖上查看按鈕
                 Button {
                     dismiss()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        navigationCoordinator.navigateToMap(coordinate: ask.center.clLocationCoordinate, mapMode: .ask)
+                        navigationCoordinator.navigateToMap(
+                            coordinate: ask.center.clLocationCoordinate, mapMode: .ask)
                     }
                 } label: {
                     Label("在地圖上查看", systemImage: "map")
                         .font(.caption.weight(.medium))
                         .foregroundColor(.orange)
                 }
-                
+
                 if ask.status == .resolved {
                     Label("已解決", systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.medium))
@@ -157,7 +159,7 @@ struct AskDetailSheetView: View {
                 }
             }
         }
-        
+
         // 附圖
         if let images = ask.images, !images.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -182,9 +184,9 @@ struct AskDetailSheetView: View {
                 }
             }
         }
-        
+
         Divider()
-        
+
         // 作者資訊
         if let author = ask.author {
             HStack(spacing: 12) {
@@ -201,18 +203,18 @@ struct AskDetailSheetView: View {
                     .scaledToFill()
                     .frame(width: 40, height: 40)
                     .clipShape(Circle())
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(author.displayName)
                         .font(.subheadline.weight(.medium))
-                    
+
                     Text(formatDate(ask.createdAt))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 // 愛心按鈕
                 LikeButtonLarge(
                     count: ask.likeCount,
@@ -223,23 +225,23 @@ struct AskDetailSheetView: View {
                 )
             }
         }
-        
+
         Divider()
-        
+
         // 回覆區
         repliesSection
     }
-    
+
     // MARK: - Replies Section
-    
+
     private var repliesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("回覆")
                     .font(.headline)
-                
+
                 Spacer()
-                
+
                 Button {
                     showReplySheet = true
                 } label: {
@@ -247,7 +249,7 @@ struct AskDetailSheetView: View {
                         .font(.subheadline)
                 }
             }
-            
+
             if viewModel.isLoadingReplies {
                 ForEach(0..<2, id: \.self) { _ in
                     ReplyRowSkeleton()
@@ -267,28 +269,28 @@ struct AskDetailSheetView: View {
             }
         }
     }
-    
+
     // MARK: - Error View
-    
+
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
                 .foregroundColor(.orange)
-            
+
             Text(message)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-            
+
             Button("重試") {
                 Task { await viewModel.loadAsk() }
             }
         }
         .frame(maxWidth: .infinity, minHeight: 200)
     }
-    
+
     // MARK: - Helpers
-    
+
     private func formatDate(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
@@ -305,28 +307,28 @@ class AskDetailViewModel: ObservableObject {
     @Published var isLoading = true
     @Published var isLoadingReplies = false
     @Published var errorMessage: String?
-    
+
     let askId: String
     let currentUserId: String?
-    
+
     private let askRepository: AskRepository
     private let replyRepository: ReplyRepository
-    
+
     init(askId: String, askRepository: AskRepository, replyRepository: ReplyRepository) {
         self.askId = askId
         self.askRepository = askRepository
         self.replyRepository = replyRepository
-        self.currentUserId = KeychainManager().getAccessToken() // 簡化：實際應從 AuthService 取得
+        self.currentUserId = KeychainManager().getAccessToken()  // 簡化：實際應從 AuthService 取得
     }
-    
+
     func loadAsk() async {
         isLoading = true
         errorMessage = nil
-        
+
         do {
             ask = try await askRepository.getAskDetail(id: askId)
             isLoading = false
-            
+
             // 載入回覆
             await loadReplies()
         } catch {
@@ -334,25 +336,25 @@ class AskDetailViewModel: ObservableObject {
             isLoading = false
         }
     }
-    
+
     func loadReplies() async {
         isLoadingReplies = true
-        
+
         do {
             replies = try await replyRepository.getRepliesForAsk(askId: askId)
         } catch {
             // 靜默處理回覆載入錯誤
         }
-        
+
         isLoadingReplies = false
     }
-    
+
     func toggleLike() async {
         guard var currentAsk = ask else { return }
-        
+
         let wasLiked = currentAsk.userHasLiked ?? false
         let previousLikeCount = currentAsk.likeCount
-        
+
         // 樂觀更新
         currentAsk.userHasLiked = !wasLiked
         currentAsk = Ask(
@@ -372,7 +374,7 @@ class AskDetailViewModel: ObservableObject {
             userHasLiked: !wasLiked
         )
         ask = currentAsk
-        
+
         do {
             let response = try await replyRepository.toggleLikeForAsk(id: askId)
             // 用伺服器回傳的計數更新
@@ -415,16 +417,17 @@ class AskDetailViewModel: ObservableObject {
             )
         }
     }
-    
+
     func resolveAsk() async {
         do {
-            _ = try await askRepository.updateAsk(id: askId, question: nil, status: .resolved, sortedImages: nil)
+            _ = try await askRepository.updateAsk(
+                id: askId, question: nil, status: .resolved, sortedImages: nil)
             await loadAsk()
         } catch {
             errorMessage = "無法更新狀態"
         }
     }
-    
+
     func deleteAsk() async {
         do {
             try await askRepository.deleteAsk(id: askId)
@@ -432,13 +435,13 @@ class AskDetailViewModel: ObservableObject {
             errorMessage = "刪除失敗"
         }
     }
-    
+
     func toggleReplyLike(replyId: String) async {
         guard let index = replies.firstIndex(where: { $0.id == replyId }) else { return }
-        
+
         let wasLiked = replies[index].userHasLiked ?? false
         let previousCount = replies[index].likeCount
-        
+
         // 樂觀更新
         replies[index] = Reply(
             id: replies[index].id,
@@ -453,7 +456,7 @@ class AskDetailViewModel: ObservableObject {
             images: replies[index].images,
             userHasLiked: !wasLiked
         )
-        
+
         do {
             let response = try await replyRepository.toggleLikeForReply(id: replyId)
             if let idx = replies.firstIndex(where: { $0.id == replyId }) {
@@ -491,4 +494,3 @@ class AskDetailViewModel: ObservableObject {
         }
     }
 }
-

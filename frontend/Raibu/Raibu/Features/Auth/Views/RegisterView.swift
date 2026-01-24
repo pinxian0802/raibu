@@ -73,7 +73,7 @@ struct RegisterView: View {
                             Text("電子郵件")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            TextField("", text: $email)
+                            TextField("請輸入電子郵件", text: $email)
                                 .textFieldStyle(.roundedBorder)
                                 .textContentType(.emailAddress)
                                 .autocapitalization(.none)

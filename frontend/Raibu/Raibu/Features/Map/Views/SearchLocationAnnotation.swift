@@ -13,11 +13,10 @@ struct SearchLocationMarker: Equatable {
     let coordinate: CLLocationCoordinate2D
     let title: String
     let subtitle: String?
-    
+
     static func == (lhs: SearchLocationMarker, rhs: SearchLocationMarker) -> Bool {
-        lhs.coordinate.latitude == rhs.coordinate.latitude &&
-        lhs.coordinate.longitude == rhs.coordinate.longitude &&
-        lhs.title == rhs.title
+        lhs.coordinate.latitude == rhs.coordinate.latitude
+            && lhs.coordinate.longitude == rhs.coordinate.longitude && lhs.title == rhs.title
     }
 }
 
@@ -27,7 +26,7 @@ class SearchLocationAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let title: String?
     let subtitle: String?
-    
+
     init(coordinate: CLLocationCoordinate2D, title: String, subtitle: String?) {
         self.coordinate = coordinate
         self.title = title

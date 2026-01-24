@@ -18,6 +18,8 @@ struct ContentView: View {
             switch authService.authState {
             case .authenticated:
                 MainTabView()
+            case .awaitingProfileSetup:
+                ProfileSetupView()
             case .awaitingEmailVerification(let email):
                 EmailVerificationPendingView(email: email)
             case .awaitingPasswordReset(let email):

@@ -15,29 +15,29 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showForgotPassword = false
-    
+
     var body: some View {
         NavigationView {
             VStack(spacing: 24) {
                 Spacer()
-                
+
                 // Logo
                 VStack(spacing: 8) {
                     Image(systemName: "map.circle.fill")
                         .font(.system(size: 80))
                         .foregroundColor(.blue)
-                    
+
                     Text("Raibu")
                         .font(.largeTitle)
                         .fontWeight(.bold)
-                    
+
                     Text("即時影像分享")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 // Login Form
                 VStack(spacing: 16) {
                     TextField("電子郵件", text: $email)
@@ -45,11 +45,11 @@ struct LoginView: View {
                         .textContentType(.emailAddress)
                         .autocapitalization(.none)
                         .keyboardType(.emailAddress)
-                    
+
                     SecureField("密碼", text: $password)
                         .textFieldStyle(.roundedBorder)
                         .textContentType(.password)
-                    
+
                     // Forgot Password Link
                     HStack {
                         Spacer()
@@ -59,14 +59,14 @@ struct LoginView: View {
                         .font(.caption)
                         .foregroundColor(.blue)
                     }
-                    
+
                     if let error = errorMessage {
                         Text(error)
                             .font(.caption)
                             .foregroundColor(.red)
                             .multilineTextAlignment(.center)
                     }
-                    
+
                     Button(action: login) {
                         if isLoading {
                             ProgressView()
@@ -84,7 +84,7 @@ struct LoginView: View {
                     .disabled(isLoading || email.isEmpty || password.isEmpty)
                 }
                 .padding(.horizontal, 32)
-                
+
                 // Register Link
                 HStack {
                     Text("還沒有帳號？")
@@ -97,7 +97,7 @@ struct LoginView: View {
                     .fontWeight(.semibold)
                 }
                 .font(.subheadline)
-                
+
                 Spacer()
             }
             .navigationBarHidden(true)
@@ -106,14 +106,19 @@ struct LoginView: View {
             ForgotPasswordView()
         }
     }
-    
+
     private func login() {
         isLoading = true
         errorMessage = nil
-        
+
         Task {
             do {
                 try await authService.signIn(email: email, password: password)
+            } catch AuthError.emailNotVerified {
+                // Email 未驗證，引導用戶到驗證頁面
+                await MainActor.run {
+                    authService.authState = .awaitingEmailVerification(email: email)
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription

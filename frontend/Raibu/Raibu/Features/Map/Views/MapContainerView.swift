@@ -32,6 +32,7 @@ struct MapContentView: View {
     @State private var isSearchActive = false
     @State private var createAskLocation: CreateAskLocation?
     @State private var searchLocation: SearchLocationMarker?
+    @State private var hideMarkers = false
 
     // Sheet 控制
     @State private var selectedDetailItem: DetailSheetItem?
@@ -130,7 +131,7 @@ struct MapContentView: View {
     private var mapView: some View {
         MapViewRepresentable(
             region: $viewModel.region,
-            clusters: viewModel.clusters,
+            clusters: hideMarkers ? [] : viewModel.clusters,
             currentMode: viewModel.currentMode,
             searchLocation: searchLocation,
             onClusterTapped: { cluster in
@@ -200,31 +201,62 @@ struct MapContentView: View {
     // MARK: - Top Controls
 
     private var topControls: some View {
-        MapSearchBar(
-            searchText: $searchText,
-            isSearchActive: $isSearchActive,
-            mapRegion: viewModel.region,
-            onSearchResultSelected: { result in
-                // 設定搜尋標記
-                searchLocation = SearchLocationMarker(
-                    coordinate: result.coordinate,
-                    title: result.mapItem.name ?? searchText,
-                    subtitle: result.mapItem.placemark.title
-                )
+        VStack(spacing: 8) {
+            MapSearchBar(
+                searchText: $searchText,
+                isSearchActive: $isSearchActive,
+                mapRegion: viewModel.region,
+                onSearchResultSelected: { result in
+                    // 設定搜尋標記
+                    searchLocation = SearchLocationMarker(
+                        coordinate: result.coordinate,
+                        title: result.mapItem.name ?? searchText,
+                        subtitle: result.mapItem.placemark.title
+                    )
 
-                // 關閉搜尋建議列表
-                isSearchActive = false
+                    // 關閉搜尋建議列表
+                    isSearchActive = false
 
-                // 移動地圖到搜尋結果（使用根據地點大小調整的縮放等級）
-                withAnimation {
-                    viewModel.region = result.adjustedRegion
+                    // 移動地圖到搜尋結果（使用根據地點大小調整的縮放等級）
+                    withAnimation {
+                        viewModel.region = result.adjustedRegion
+                    }
+                },
+                onSearchCleared: {
+                    // 清除地圖上的搜尋標記
+                    searchLocation = nil
+                    // 清除搜尋時恢復顯示標點
+                    hideMarkers = false
                 }
-            },
-            onSearchCleared: {
-                // 清除地圖上的搜尋標記
-                searchLocation = nil
+            )
+
+            // 顯示/隱藏標點按鈕（只在有搜尋結果時顯示）
+            if searchLocation != nil {
+                HStack {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            hideMarkers.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: hideMarkers ? "eye.slash" : "eye")
+                            Text(hideMarkers ? "顯示標點" : "隱藏標點")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(hideMarkers ? .white : .primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(hideMarkers ? Color.blue : Color(.systemBackground))
+                        .clipShape(Capsule())
+                        .shadow(color: Color.black.opacity(0.1), radius: 3)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
             }
-        )
+        }
     }
 
     // MARK: - Bottom Controls
