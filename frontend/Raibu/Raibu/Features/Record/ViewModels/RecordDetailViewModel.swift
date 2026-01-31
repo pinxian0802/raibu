@@ -30,10 +30,18 @@ class RecordDetailViewModel: ObservableObject {
     let recordId: String
     let initialImageIndex: Int
     
+    /// 是否為作者（可操作編輯/刪除）
+    var isOwner: Bool {
+        guard let record = record else { return false }
+        let currentUserId = authService.currentUserId
+        return record.userId == currentUserId
+    }
+    
     // MARK: - Dependencies
     
     private let recordRepository: RecordRepository
     private let replyRepository: ReplyRepository
+    private let authService: AuthService
     
     // MARK: - Initialization
     
@@ -41,12 +49,14 @@ class RecordDetailViewModel: ObservableObject {
         recordId: String,
         initialImageIndex: Int = 0,
         recordRepository: RecordRepository,
-        replyRepository: ReplyRepository
+        replyRepository: ReplyRepository,
+        authService: AuthService = AuthService.shared
     ) {
         self.recordId = recordId
         self.initialImageIndex = initialImageIndex
         self.recordRepository = recordRepository
         self.replyRepository = replyRepository
+        self.authService = authService
     }
     
     // MARK: - Public Methods

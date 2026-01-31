@@ -18,6 +18,7 @@ struct RecordDetailSheetView: View {
     @State private var showReplyInput = false
     @State private var showMoreOptions = false
     @State private var showEditSheet = false
+    @State private var showReportSheet = false
     
     init(
         recordId: String,
@@ -67,11 +68,20 @@ struct RecordDetailSheetView: View {
             await viewModel.loadRecord()
         }
         .confirmationDialog("管理", isPresented: $showMoreOptions) {
-            Button("編輯", role: nil) {
-                showEditSheet = true
+            // 只有作者才能編輯/刪除
+            if viewModel.isOwner {
+                Button("編輯", role: nil) {
+                    showEditSheet = true
+                }
+                Button("刪除", role: .destructive) {
+                    viewModel.showDeleteConfirmation = true
+                }
             }
-            Button("刪除", role: .destructive) {
-                viewModel.showDeleteConfirmation = true
+            // 非作者才能檢舉
+            if !viewModel.isOwner {
+                Button("檢舉", role: .destructive) {
+                    showReportSheet = true
+                }
             }
             Button("取消", role: .cancel) {}
         }
@@ -101,6 +111,12 @@ struct RecordDetailSheetView: View {
             }
         } message: {
             Text("確定要刪除此標點嗎？此動作無法復原。")
+        }
+        .sheet(isPresented: $showReportSheet) {
+            ReportSheetView(
+                target: .record(id: viewModel.recordId),
+                apiClient: container.apiClient
+            )
         }
         } // VStack
     }

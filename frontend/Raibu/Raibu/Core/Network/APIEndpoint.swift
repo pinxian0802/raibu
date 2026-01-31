@@ -38,6 +38,11 @@ enum APIEndpoint {
     case getMyRecords
     case getMyAsks
     
+    // MARK: - 檢舉模組 (Reports)
+    case createReport
+    case checkReport(recordId: String?, askId: String?, replyId: String?)
+    case deleteReport(id: String)
+    
     /// 產生完整 URL
     func url(baseURL: String) throws -> URL {
         let path = self.path
@@ -108,6 +113,14 @@ enum APIEndpoint {
             return "/users/me/records"
         case .getMyAsks:
             return "/users/me/asks"
+            
+        // 檢舉
+        case .createReport:
+            return "/reports"
+        case .checkReport:
+            return "/reports/check"
+        case .deleteReport(let id):
+            return "/reports/\(id)"
         }
     }
     
@@ -134,6 +147,16 @@ enum APIEndpoint {
                 return [URLQueryItem(name: "record_id", value: recordId)]
             } else if let askId = askId {
                 return [URLQueryItem(name: "ask_id", value: askId)]
+            }
+            return nil
+            
+        case .checkReport(let recordId, let askId, let replyId):
+            if let recordId = recordId {
+                return [URLQueryItem(name: "record_id", value: recordId)]
+            } else if let askId = askId {
+                return [URLQueryItem(name: "ask_id", value: askId)]
+            } else if let replyId = replyId {
+                return [URLQueryItem(name: "reply_id", value: replyId)]
             }
             return nil
             

@@ -90,6 +90,7 @@ const asksRoutes = require("./routes/asks");
 const repliesRoutes = require("./routes/replies");
 const likesRoutes = require("./routes/likes");
 const usersRoutes = require("./routes/users");
+const reportsRoutes = require("./routes/reports");
 
 // API v1 Routes
 app.use("/api/v1/upload", uploadLimiter, uploadRoutes);
@@ -98,6 +99,7 @@ app.use("/api/v1/asks", asksRoutes);
 app.use("/api/v1/replies", repliesRoutes);
 app.use("/api/v1/likes", likesRoutes);
 app.use("/api/v1/users", usersRoutes);
+app.use("/api/v1/reports", reportsRoutes);
 
 // Health Check
 app.get("/", (req, res) => {
@@ -112,6 +114,7 @@ app.get("/", (req, res) => {
       replies: "/api/v1/replies",
       likes: "/api/v1/likes",
       users: "/api/v1/users",
+      reports: "/api/v1/reports",
     },
   });
 });

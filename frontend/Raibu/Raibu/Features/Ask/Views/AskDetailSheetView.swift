@@ -18,11 +18,13 @@ struct AskDetailSheetView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var container: DIContainer
     @StateObject private var viewModel: AskDetailViewModel
 
     @State private var showDeleteConfirmation = false
     @State private var showEditSheet = false
     @State private var showReplySheet = false
+    @State private var showReportSheet = false
 
     init(askId: String, askRepository: AskRepository, replyRepository: ReplyRepository) {
         self.askId = askId
@@ -65,8 +67,9 @@ struct AskDetailSheetView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        if viewModel.ask?.userId == viewModel.currentUserId {
-                            Menu {
+                        Menu {
+                            // 作者可編輯/刪除/標記已解決
+                            if viewModel.ask?.userId == viewModel.currentUserId {
                                 Button {
                                     showEditSheet = true
                                 } label: {
@@ -86,9 +89,16 @@ struct AskDetailSheetView: View {
                                         Label("標記為已解決", systemImage: "checkmark.circle")
                                     }
                                 }
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
+                            } else {
+                                // 非作者可檢舉
+                                Button(role: .destructive) {
+                                    showReportSheet = true
+                                } label: {
+                                    Label("檢舉", systemImage: "flag")
+                                }
                             }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
                         }
                     }
                 }
@@ -112,6 +122,12 @@ struct AskDetailSheetView: View {
                         }
                     )
                     .environmentObject(DIContainer())
+                }
+                .sheet(isPresented: $showReportSheet) {
+                    ReportSheetView(
+                        target: .ask(id: askId),
+                        apiClient: container.apiClient
+                    )
                 }
             }
             .task {
@@ -309,7 +325,11 @@ class AskDetailViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     let askId: String
-    let currentUserId: String?
+    
+    /// 當前使用者 ID（從 AuthService 取得）
+    var currentUserId: String? {
+        return AuthService.shared.currentUserId
+    }
 
     private let askRepository: AskRepository
     private let replyRepository: ReplyRepository
@@ -318,7 +338,6 @@ class AskDetailViewModel: ObservableObject {
         self.askId = askId
         self.askRepository = askRepository
         self.replyRepository = replyRepository
-        self.currentUserId = KeychainManager().getAccessToken()  // 簡化：實際應從 AuthService 取得
     }
 
     func loadAsk() async {

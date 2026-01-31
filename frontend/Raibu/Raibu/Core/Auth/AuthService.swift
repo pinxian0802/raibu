@@ -20,9 +20,17 @@ enum AuthState {
 
 /// 認證服務
 class AuthService: ObservableObject {
+    /// 單例實例（全局共用）
+    static let shared = AuthService()
+    
     @Published var authState: AuthState = .unauthenticated
     @Published var currentUser: User?
     @Published var isLoading = false
+    
+    /// 便捷屬性：當前使用者 ID
+    var currentUserId: String? {
+        return currentUser?.id
+    }
     
     /// 便利屬性：是否已認證
     var isAuthenticated: Bool {
