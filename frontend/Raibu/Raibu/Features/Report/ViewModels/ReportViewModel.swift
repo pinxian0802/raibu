@@ -76,8 +76,11 @@ class ReportViewModel: ObservableObject {
             showSuccess = true
             hasReported = true
         } catch let error as APIError {
+            // 顯示後端回傳的錯誤訊息
+            print("❌ Report error: \(error)")
             errorMessage = error.errorDescription ?? "檢舉失敗，請稍後再試"
         } catch {
+            print("❌ Report unknown error: \(error)")
             errorMessage = "檢舉失敗，請稍後再試"
         }
         

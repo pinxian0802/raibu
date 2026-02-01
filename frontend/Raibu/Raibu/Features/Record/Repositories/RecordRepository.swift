@@ -8,7 +8,7 @@
 import Foundation
 
 /// 紀錄標點 Repository
-class RecordRepository {
+class RecordRepository: RecordRepositoryProtocol {
     private let apiClient: APIClient
     
     init(apiClient: APIClient) {

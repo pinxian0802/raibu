@@ -17,19 +17,23 @@ struct RegisterView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     
-    private var isFormValid: Bool {
-        !displayName.isEmpty &&
-        !email.isEmpty &&
-        !password.isEmpty &&
-        password == confirmPassword &&
-        isValidPassword
+    // MARK: - Validation (使用 AuthValidation)
+    
+    private var isValidEmail: Bool {
+        AuthValidation.isValidEmail(email)
     }
     
     private var isValidPassword: Bool {
-        let hasMinimumLength = password.count >= 8
-        let hasLetter = password.rangeOfCharacter(from: .letters) != nil
-        let hasNumber = password.rangeOfCharacter(from: .decimalDigits) != nil
-        return hasMinimumLength && hasLetter && hasNumber
+        AuthValidation.isValidPassword(password)
+    }
+    
+    private var isFormValid: Bool {
+        !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !email.isEmpty &&
+        isValidEmail &&
+        !password.isEmpty &&
+        isValidPassword &&
+        password == confirmPassword
     }
     
     private var passwordMismatch: Bool {
@@ -78,6 +82,13 @@ struct RegisterView: View {
                                 .textContentType(.emailAddress)
                                 .autocapitalization(.none)
                                 .keyboardType(.emailAddress)
+                            
+                            // Email 格式提示
+                            if !email.isEmpty && !isValidEmail {
+                                Text("請輸入有效的電子郵件地址")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
                         }
                         
                         // Password
@@ -151,6 +162,17 @@ struct RegisterView: View {
     }
     
     private func register() {
+        // 前端驗證
+        if let validationError = AuthValidation.validateSignUpForm(
+            email: email,
+            password: password,
+            confirmPassword: confirmPassword,
+            displayName: displayName
+        ) {
+            errorMessage = validationError.localizedDescription
+            return
+        }
+        
         isLoading = true
         errorMessage = nil
         
@@ -159,12 +181,12 @@ struct RegisterView: View {
                 try await authService.signUp(
                     email: email,
                     password: password,
-                    displayName: displayName
+                    displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
                 // 註冊成功後會自動切換到驗證等待畫面（由 authState 控制）
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = AuthError.from(error).localizedDescription
                 }
             }
             await MainActor.run {

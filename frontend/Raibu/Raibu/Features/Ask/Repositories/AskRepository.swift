@@ -8,7 +8,7 @@
 import Foundation
 
 /// 詢問標點 Repository
-class AskRepository {
+class AskRepository: AskRepositoryProtocol {
     private let apiClient: APIClient
     
     init(apiClient: APIClient) {
@@ -58,19 +58,19 @@ class AskRepository {
         question: String?,
         status: AskStatus?,
         sortedImages: [SortedImageItem]?
-    ) async throws -> Ask {
+    ) async throws {
         let request = UpdateAskRequest(
             question: question,
             status: status,
             sortedImages: sortedImages
         )
         
-        return try await apiClient.patch(.updateAsk(id: id), body: request)
+        let _: Ask = try await apiClient.patch(.updateAsk(id: id), body: request)
     }
     
     /// 標記詢問為已解決
-    func markAsResolved(id: String) async throws -> Ask {
-        return try await updateAsk(id: id, question: nil, status: .resolved, sortedImages: nil)
+    func markAsResolved(id: String) async throws {
+        try await updateAsk(id: id, question: nil, status: .resolved, sortedImages: nil)
     }
     
     /// 刪除詢問

@@ -47,6 +47,12 @@ class MapViewModel: ObservableObject {
     private var lastFetchedRegion: MKCoordinateRegion?
     private var fetchTask: Task<Void, Never>?
     
+    // 防抖時間（毫秒）
+    private let debounceInterval: UInt64 = 500_000_000  // 500ms
+    
+    // 最小移動距離才重新載入（經緯度）
+    private let minRegionChangeThreshold: Double = 0.001
+    
     // 台北市中心預設位置
     private static let defaultCenter = CLLocationCoordinate2D(latitude: 25.033, longitude: 121.565)
     private static let defaultSpan = MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
@@ -87,11 +93,24 @@ class MapViewModel: ObservableObject {
         self.region = newRegion
         self.mapSize = mapSize
         
+        // 檢查是否需要重新載入（移動距離夠大才載入）
+        if let lastRegion = lastFetchedRegion {
+            let latDiff = abs(newRegion.center.latitude - lastRegion.center.latitude)
+            let lngDiff = abs(newRegion.center.longitude - lastRegion.center.longitude)
+            let spanDiff = abs(newRegion.span.latitudeDelta - lastRegion.span.latitudeDelta)
+            
+            // 如果移動距離太小且縮放級別沒變，只更新群集不重新載入
+            if latDiff < minRegionChangeThreshold && lngDiff < minRegionChangeThreshold && spanDiff < 0.005 {
+                updateClusters()
+                return
+            }
+        }
+        
         // 防抖：取消之前的 fetch 任務
         fetchTask?.cancel()
         
         fetchTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 300_000_000)  // 300ms
+            try? await Task.sleep(nanoseconds: debounceInterval)
             
             if !Task.isCancelled {
                 await fetchDataForCurrentRegion()
@@ -237,6 +256,9 @@ class MapViewModel: ObservableObject {
                 // 過濾：僅顯示 48 小時內的詢問標點 (PRD 規定)
                 asks = allAsks.filter { $0.isWithin48Hours }
             }
+            
+            // 記錄已載入的區域
+            lastFetchedRegion = region
             
             updateClusters()
             

@@ -271,7 +271,13 @@ struct MapContentView: View {
                 VStack(spacing: 12) {
                     // 定位按鈕
                     Button {
-                        viewModel.moveToUserLocation()
+                        // 觸覺反饋
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            viewModel.moveToUserLocation()
+                        }
                     } label: {
                         Image(systemName: "location.fill")
                             .font(.system(size: 20))
@@ -281,6 +287,7 @@ struct MapContentView: View {
                             .clipShape(Circle())
                             .shadow(color: Color.black.opacity(0.15), radius: 5)
                     }
+                    .buttonStyle(ScaleButtonStyle())
                 }
             }
             .padding(.horizontal, 16)
@@ -292,12 +299,17 @@ struct MapContentView: View {
         HStack(spacing: 0) {
             ForEach(MapMode.allCases, id: \.self) { mode in
                 Button {
-                    withAnimation(.spring(response: 0.3)) {
+                    // 觸覺反饋
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred()
+                    
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         viewModel.switchMode(to: mode)
                     }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: mode.iconName)
+                            .scaleEffect(viewModel.currentMode == mode ? 1.1 : 1.0)
                         Text(mode.rawValue)
                     }
                     .font(.subheadline.weight(.medium))
@@ -310,12 +322,24 @@ struct MapContentView: View {
                     )
                     .cornerRadius(20)
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(4)
         .background(Color(.systemBackground))
         .cornerRadius(24)
         .shadow(color: Color.black.opacity(0.15), radius: 5)
+    }
+}
+
+// MARK: - Button Styles
+
+/// 縮放按鈕樣式
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 

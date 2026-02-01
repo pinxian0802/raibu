@@ -44,6 +44,10 @@ struct ProfileFullView: View {
                 }
                 .padding(.vertical)
             }
+            .refreshable {
+                // 下拉刷新
+                await viewModel.refreshAll()
+            }
             .navigationTitle("個人資訊")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -65,13 +69,20 @@ struct ProfileFullView: View {
             }
         }
         .task {
+            // 初次載入：並行載入所有資料
             await viewModel.loadProfile()
+            await loadCurrentTabData()
+        }
+        .onChange(of: selectedTab) { _, newTab in
+            // Tab 切換時載入對應資料
+            Task {
+                await loadCurrentTabData()
+            }
         }
         .sheet(item: $selectedDetailItem, onDismiss: {
-            // 關閉詳情頁後重新載入列表，確保愛心數量等資料同步
+            // 關閉詳情頁後刷新列表
             Task {
-                await viewModel.loadMyRecords()
-                await viewModel.loadMyAsks()
+                await viewModel.refreshLists()
             }
         }) { item in
             switch item {
@@ -91,6 +102,16 @@ struct ProfileFullView: View {
                 )
                 .environmentObject(navigationCoordinator)
             }
+        }
+    }
+    
+    // MARK: - Data Loading
+    
+    private func loadCurrentTabData() async {
+        if selectedTab == 0 {
+            await viewModel.loadMyRecords()
+        } else {
+            await viewModel.loadMyAsks()
         }
     }
     
@@ -193,7 +214,11 @@ struct ProfileFullView: View {
     
     private func tabButton(title: String, index: Int) -> some View {
         Button {
-            withAnimation(.spring(response: 0.3)) {
+            // 觸覺反饋
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+            
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 selectedTab = index
             }
         } label: {
@@ -208,6 +233,7 @@ struct ProfileFullView: View {
                 )
                 .cornerRadius(8)
         }
+        .buttonStyle(PlainButtonStyle())
     }
     
     // MARK: - List Content
@@ -216,14 +242,22 @@ struct ProfileFullView: View {
     private var listContent: some View {
         if selectedTab == 0 {
             recordsList
+                .transition(.asymmetric(
+                    insertion: .move(edge: .leading).combined(with: .opacity),
+                    removal: .opacity
+                ))
         } else {
             asksList
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .opacity
+                ))
         }
     }
     
     private var recordsList: some View {
         VStack(spacing: 12) {
-            if viewModel.isLoadingRecords {
+            if viewModel.isLoadingRecords && viewModel.myRecords.isEmpty {
                 ForEach(0..<3, id: \.self) { _ in
                     RecordRowSkeleton()
                 }
@@ -241,19 +275,17 @@ struct ProfileFullView: View {
                     } label: {
                         recordRow(record)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(CardButtonStyle())
                 }
             }
         }
         .padding(.horizontal)
-        .task {
-            await viewModel.loadMyRecords()
-        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.myRecords.count)
     }
     
     private var asksList: some View {
         VStack(spacing: 12) {
-            if viewModel.isLoadingAsks {
+            if viewModel.isLoadingAsks && viewModel.myAsks.isEmpty {
                 ForEach(0..<3, id: \.self) { _ in
                     AskRowSkeleton()
                 }
@@ -270,14 +302,12 @@ struct ProfileFullView: View {
                     } label: {
                         askRow(ask)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(CardButtonStyle())
                 }
             }
         }
         .padding(.horizontal)
-        .task {
-            await viewModel.loadMyAsks()
-        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.myAsks.count)
     }
     
     // MARK: - Row Views
@@ -380,78 +410,19 @@ struct ProfileFullView: View {
     }
 }
 
-// MARK: - Profile ViewModel
+// MARK: - Card Button Style
 
-class ProfileViewModel: ObservableObject {
-    @Published var profile: UserProfile?
-    @Published var myRecords: [Record] = []
-    @Published var myAsks: [Ask] = []
-    @Published var isLoading = false
-    @Published var isLoadingRecords = false
-    @Published var isLoadingAsks = false
-    @Published var errorMessage: String?
-    
-    private let userRepository: UserRepository
-    
-    init(userRepository: UserRepository) {
-        self.userRepository = userRepository
-    }
-    
-    func loadProfile() async {
-        await MainActor.run {
-            isLoading = true
-        }
-        
-        do {
-            let loadedProfile = try await userRepository.getMe()
-            await MainActor.run {
-                profile = loadedProfile
-                isLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                isLoading = false
-            }
-        }
-    }
-    
-    func loadMyRecords() async {
-        await MainActor.run {
-            isLoadingRecords = true
-        }
-        
-        do {
-            let records = try await userRepository.getMyRecords()
-            await MainActor.run {
-                myRecords = records
-                isLoadingRecords = false
-            }
-        } catch {
-            await MainActor.run {
-                isLoadingRecords = false
-            }
-        }
-    }
-    
-    func loadMyAsks() async {
-        await MainActor.run {
-            isLoadingAsks = true
-        }
-        
-        do {
-            let asks = try await userRepository.getMyAsks()
-            await MainActor.run {
-                myAsks = asks
-                isLoadingAsks = false
-            }
-        } catch {
-            await MainActor.run {
-                isLoadingAsks = false
-            }
-        }
+/// 卡片按鈕樣式（帶點擊動畫）
+struct CardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
+
+// MARK: - Preview
 
 #Preview {
     ProfileFullView(

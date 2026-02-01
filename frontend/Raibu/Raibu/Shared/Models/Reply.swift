@@ -14,7 +14,7 @@ struct Reply: Codable, Identifiable, Equatable {
     let askId: String?
     let userId: String
     let content: String
-    let isOnsite: Bool
+    let isOnsite: Bool?
     let likeCount: Int
     let createdAt: Date
     
@@ -50,12 +50,14 @@ struct CreateReplyRequest: Codable {
     let askId: String?
     let content: String
     let images: [CreateImageRequest]?
+    let currentLocation: Coordinate?
     
     enum CodingKeys: String, CodingKey {
         case recordId = "record_id"
         case askId = "ask_id"
         case content
         case images
+        case currentLocation = "current_location"
     }
 }
 

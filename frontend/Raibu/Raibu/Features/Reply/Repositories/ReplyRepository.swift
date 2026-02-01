@@ -8,7 +8,7 @@
 import Foundation
 
 /// 回覆 Repository
-class ReplyRepository {
+class ReplyRepository: ReplyRepositoryProtocol {
     private let apiClient: APIClient
     
     init(apiClient: APIClient) {
@@ -17,10 +17,10 @@ class ReplyRepository {
     
     // MARK: - Public Methods
     
-    /// 建立回覆
+    /// 建立回覆 (通用方法)
     func createReply(
-        recordId: String? = nil,
-        askId: String? = nil,
+        recordId: String?,
+        askId: String?,
         content: String,
         images: [UploadedImage]?
     ) async throws -> Reply {
@@ -28,7 +28,43 @@ class ReplyRepository {
             recordId: recordId,
             askId: askId,
             content: content,
-            images: images?.map { $0.toCreateRequest() }
+            images: images?.map { $0.toCreateRequest() },
+            currentLocation: nil
+        )
+        
+        return try await apiClient.post(.createReply, body: request)
+    }
+    
+    /// 建立紀錄的回覆
+    func createReplyForRecord(
+        recordId: String,
+        content: String,
+        images: [UploadedImage]?
+    ) async throws -> Reply {
+        let request = CreateReplyRequest(
+            recordId: recordId,
+            askId: nil,
+            content: content,
+            images: images?.map { $0.toCreateRequest() },
+            currentLocation: nil
+        )
+        
+        return try await apiClient.post(.createReply, body: request)
+    }
+    
+    /// 建立詢問的回覆
+    func createReplyForAsk(
+        askId: String,
+        content: String,
+        images: [UploadedImage]?,
+        currentLocation: Coordinate?
+    ) async throws -> Reply {
+        let request = CreateReplyRequest(
+            recordId: nil,
+            askId: askId,
+            content: content,
+            images: images?.map { $0.toCreateRequest() },
+            currentLocation: currentLocation
         )
         
         return try await apiClient.post(.createReply, body: request)
@@ -49,6 +85,13 @@ class ReplyRepository {
         )
         return response.replies
     }
+    
+    /// 刪除回覆
+    func deleteReply(id: String) async throws {
+        try await apiClient.delete(.deleteReply(id: id))
+    }
+    
+    // MARK: - Like Methods (保留原有功能)
     
     /// 點讚/取消點讚 (通用)
     func toggleLike(request: ToggleLikeRequest) async throws -> ToggleLikeResponse {

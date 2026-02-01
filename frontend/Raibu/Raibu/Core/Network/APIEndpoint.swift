@@ -30,6 +30,7 @@ enum APIEndpoint {
     // MARK: - 回覆模組 (Module D)
     case createReply
     case getReplies(recordId: String?, askId: String?)
+    case deleteReply(id: String)
     case toggleLike
     
     // MARK: - 使用者模組 (Module E)
@@ -101,6 +102,8 @@ enum APIEndpoint {
             return "/replies"
         case .getReplies:
             return "/replies"
+        case .deleteReply(let id):
+            return "/replies/\(id)"
         case .toggleLike:
             return "/likes"
             

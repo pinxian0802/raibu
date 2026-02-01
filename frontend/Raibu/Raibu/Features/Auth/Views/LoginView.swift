@@ -15,6 +15,16 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showForgotPassword = false
+    
+    // MARK: - Validation
+    
+    private var isValidEmail: Bool {
+        AuthValidation.isValidEmail(email)
+    }
+    
+    private var canSubmit: Bool {
+        !email.isEmpty && !password.isEmpty && isValidEmail
+    }
 
     var body: some View {
         NavigationView {
@@ -40,11 +50,20 @@ struct LoginView: View {
 
                 // Login Form
                 VStack(spacing: 16) {
-                    TextField("電子郵件", text: $email)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.emailAddress)
-                        .autocapitalization(.none)
-                        .keyboardType(.emailAddress)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("電子郵件", text: $email)
+                            .textFieldStyle(.roundedBorder)
+                            .textContentType(.emailAddress)
+                            .autocapitalization(.none)
+                            .keyboardType(.emailAddress)
+                        
+                        // Email 格式提示
+                        if !email.isEmpty && !isValidEmail {
+                            Text("請輸入有效的電子郵件地址")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
 
                     SecureField("密碼", text: $password)
                         .textFieldStyle(.roundedBorder)
@@ -78,10 +97,10 @@ struct LoginView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.blue)
+                    .background(canSubmit ? Color.blue : Color.gray)
                     .foregroundColor(.white)
                     .cornerRadius(10)
-                    .disabled(isLoading || email.isEmpty || password.isEmpty)
+                    .disabled(isLoading || !canSubmit)
                 }
                 .padding(.horizontal, 32)
 
@@ -108,6 +127,12 @@ struct LoginView: View {
     }
 
     private func login() {
+        // 前端驗證
+        if let validationError = AuthValidation.validateLoginForm(email: email, password: password) {
+            errorMessage = validationError.localizedDescription
+            return
+        }
+        
         isLoading = true
         errorMessage = nil
 
@@ -121,7 +146,7 @@ struct LoginView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = AuthError.from(error).localizedDescription
                 }
             }
             await MainActor.run {

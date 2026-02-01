@@ -6,6 +6,9 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
+// Import logger
+const { log, requestLogger } = require("./utils/logger");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -38,7 +41,7 @@ app.use(
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.warn(`CORS blocked origin: ${origin}`);
+        log.warn(`CORS blocked origin: ${origin}`, { origin });
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -47,9 +50,8 @@ app.use(
 );
 
 // 3. Rate Limiting - 防止暴力破解與 DoS
-// 全域限制：每 IP 每 15 分鐘 200 次請求
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 分鐘
+  windowMs: 15 * 60 * 1000,
   max: 200,
   message: {
     error: {
@@ -61,9 +63,8 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// 上傳限制：每 IP 每小時 50 次（防止濫用存儲）
 const uploadLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 小時
+  windowMs: 60 * 60 * 1000,
   max: 50,
   message: {
     error: {
@@ -79,6 +80,9 @@ app.use("/api/", generalLimiter);
 
 // JSON 解析
 app.use(express.json());
+
+// Request Logger (在所有路由之前)
+app.use(requestLogger);
 
 // Import error handler
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
@@ -107,6 +111,7 @@ app.get("/", (req, res) => {
     status: "ok",
     message: "Raibu Backend API v1",
     version: "3.1",
+    environment: process.env.NODE_ENV || "development",
     endpoints: {
       upload: "/api/v1/upload",
       records: "/api/v1/records",
@@ -126,6 +131,11 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 app.listen(PORT, () => {
+  log.info(`Server started`, {
+    port: PORT,
+    environment: process.env.NODE_ENV || "development",
+    baseUrl: `http://localhost:${PORT}/api/v1`,
+  });
   console.log(`🚀 Raibu Backend is running on port ${PORT}`);
   console.log(`📍 API Base URL: http://localhost:${PORT}/api/v1`);
 });

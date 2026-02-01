@@ -32,9 +32,17 @@ class RecordDetailViewModel: ObservableObject {
     
     /// 是否為作者（可操作編輯/刪除）
     var isOwner: Bool {
-        guard let record = record else { return false }
-        let currentUserId = authService.currentUserId
-        return record.userId == currentUserId
+        guard let record = record else {
+            print("⚠️ isOwner: record is nil")
+            return false
+        }
+        guard let currentUserId = authService.currentUserId else {
+            print("⚠️ isOwner: currentUserId is nil")
+            return false
+        }
+        let isOwner = record.userId == currentUserId
+        print("✅ isOwner check: recordUserId=\(record.userId), currentUserId=\(currentUserId), isOwner=\(isOwner)")
+        return isOwner
     }
     
     // MARK: - Dependencies
@@ -42,6 +50,11 @@ class RecordDetailViewModel: ObservableObject {
     private let recordRepository: RecordRepository
     private let replyRepository: ReplyRepository
     private let authService: AuthService
+    
+    // MARK: - Task Management
+    
+    private var loadTask: Task<Void, Never>?
+    private var likeTask: Task<Void, Never>?
     
     // MARK: - Initialization
     
@@ -59,32 +72,53 @@ class RecordDetailViewModel: ObservableObject {
         self.authService = authService
     }
     
+    deinit {
+        // 取消所有進行中的 Tasks
+        cancelAllTasks()
+    }
+    
     // MARK: - Public Methods
     
     /// 載入紀錄詳情
-    func loadRecord() async {
-        await MainActor.run {
+    func loadRecord() {
+        // 取消之前的載入任務
+        loadTask?.cancel()
+        
+        loadTask = Task { @MainActor in
             isLoading = true
             errorMessage = nil
-        }
-        
-        do {
-            let loadedRecord = try await recordRepository.getRecordDetail(id: recordId)
-            let loadedReplies = try await replyRepository.getRepliesForRecord(recordId: recordId)
             
-            await MainActor.run {
+            do {
+                // 檢查是否已被取消
+                try Task.checkCancellation()
+                
+                let loadedRecord = try await recordRepository.getRecordDetail(id: recordId)
+                
+                try Task.checkCancellation()
+                
+                let loadedReplies = try await replyRepository.getRepliesForRecord(recordId: recordId)
+                
+                try Task.checkCancellation()
+                
                 record = loadedRecord
                 replies = loadedReplies
                 isLiked = loadedRecord.userHasLiked ?? false
                 likeCount = loadedRecord.likeCount
                 isLoading = false
-            }
-        } catch {
-            await MainActor.run {
+            } catch is CancellationError {
+                // Task 被取消，不做任何處理
+                print("📛 loadRecord task was cancelled")
+            } catch {
                 errorMessage = error.localizedDescription
                 isLoading = false
             }
         }
+    }
+    
+    /// 取消所有進行中的任務
+    func cancelAllTasks() {
+        loadTask?.cancel()
+        likeTask?.cancel()
     }
     
     /// 切換點讚狀態

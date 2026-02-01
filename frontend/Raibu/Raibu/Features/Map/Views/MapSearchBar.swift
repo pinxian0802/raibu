@@ -64,6 +64,8 @@ struct MapSearchBar: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .font(.system(size: 16, weight: .medium))
+                .scaleEffect(isTextFieldFocused ? 1.1 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTextFieldFocused)
 
             TextField("搜尋地點", text: $searchText)
                 .textFieldStyle(.plain)
@@ -82,7 +84,9 @@ struct MapSearchBar: View {
 
             if !searchText.isEmpty {
                 Button {
-                    clearSearch()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        clearSearch()
+                    }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
@@ -95,7 +99,12 @@ struct MapSearchBar: View {
         .padding(.vertical, 10)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: Color.black.opacity(0.1), radius: 5)
+        .shadow(
+            color: Color.black.opacity(isTextFieldFocused ? 0.15 : 0.1),
+            radius: isTextFieldFocused ? 8 : 5
+        )
+        .scaleEffect(isTextFieldFocused ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTextFieldFocused)
         .animation(.easeInOut(duration: 0.15), value: searchText.isEmpty)
         .animation(.easeInOut(duration: 0.15), value: searchCompleter.isSearching)
     }
