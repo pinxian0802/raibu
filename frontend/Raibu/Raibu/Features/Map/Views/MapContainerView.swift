@@ -30,6 +30,7 @@ struct MapContentView: View {
 
     @State private var searchText = ""
     @State private var isSearchActive = false
+    @State private var isSearchExpanded = false // 新增：控制搜尋欄展開狀態
     @State private var createAskLocation: CreateAskLocation?
     @State private var searchLocation: SearchLocationMarker?
     @State private var hideMarkers = false
@@ -201,37 +202,54 @@ struct MapContentView: View {
     // MARK: - Top Controls
 
     private var topControls: some View {
-        VStack(spacing: 8) {
-            MapSearchBar(
-                searchText: $searchText,
-                isSearchActive: $isSearchActive,
-                mapRegion: viewModel.region,
-                onSearchResultSelected: { result in
-                    // 設定搜尋標記
-                    searchLocation = SearchLocationMarker(
-                        coordinate: result.coordinate,
-                        title: result.mapItem.name ?? searchText,
-                        subtitle: result.mapItem.placemark.title
-                    )
-
-                    // 關閉搜尋建議列表
-                    isSearchActive = false
-
-                    // 移動地圖到搜尋結果（使用根據地點大小調整的縮放等級）
-                    withAnimation {
-                        viewModel.region = result.adjustedRegion
+        VStack(alignment: .leading, spacing: 8) {
+            // 第一行：搜尋欄和模式切換按鈕（固定在頂部）
+            HStack(spacing: 12) {
+                // 搜尋欄（建議列表會浮在上層，不影響佈局）
+                MapSearchBar(
+                    searchText: $searchText,
+                    isSearchActive: $isSearchActive,
+                    isExpanded: $isSearchExpanded,
+                    mapRegion: viewModel.region,
+                    onSearchResultSelected: { result in
+                        searchLocation = SearchLocationMarker(
+                            coordinate: result.coordinate,
+                            title: result.mapItem.name ?? searchText,
+                            subtitle: result.mapItem.placemark.title
+                        )
+                        isSearchActive = false
+                        withAnimation {
+                            viewModel.region = result.adjustedRegion
+                        }
+                    },
+                    onSearchCleared: {
+                        searchLocation = nil
+                        hideMarkers = false
                     }
-                },
-                onSearchCleared: {
-                    // 清除地圖上的搜尋標記
-                    searchLocation = nil
-                    // 清除搜尋時恢復顯示標點
-                    hideMarkers = false
+                )
+                // 搜尋展開時填滿剩餘空間
+                .frame(maxWidth: isSearchExpanded ? .infinity : nil)
+                
+                // 模式切換按鈕（固定位置）
+                if isSearchExpanded {
+                    modeSwitcherCompact
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    modeSwitcher
+                        .transition(.scale.combined(with: .opacity))
                 }
-            )
+                
+                // 只有收合時才需要 Spacer（展開時搜尋欄會填滿）
+                if !isSearchExpanded {
+                    Spacer()
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSearchExpanded)
 
-            // 顯示/隱藏標點按鈕（只在有搜尋結果時顯示）
-            if searchLocation != nil {
+            // 第二行：隱藏標點按鈕（建議列表展開時不顯示）
+            if searchLocation != nil && !isSearchActive {
                 HStack {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -250,13 +268,15 @@ struct MapContentView: View {
                         .clipShape(Capsule())
                         .shadow(color: Color.black.opacity(0.1), radius: 3)
                     }
-
                     Spacer()
                 }
                 .padding(.horizontal, 16)
-                .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSearchActive)
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: searchLocation)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSearchActive)
     }
 
     // MARK: - Bottom Controls
@@ -264,8 +284,6 @@ struct MapContentView: View {
     private var bottomControls: some View {
         VStack(spacing: 12) {
             HStack {
-                modeSwitcher
-
                 Spacer()
 
                 VStack(spacing: 12) {
@@ -284,51 +302,120 @@ struct MapContentView: View {
                             .foregroundColor(.primary)
                             .frame(width: 44, height: 44)
                             .background(Color(.systemBackground))
-                            .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.15), radius: 5)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 2)
                     }
                     .buttonStyle(ScaleButtonStyle())
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 30)
+            .padding(.bottom, 75) // TabBar 高度調整後：約 55pt + 底部安全區域 20pt
         }
     }
 
+    @Namespace private var modeSwitcherAnimation
+    
     private var modeSwitcher: some View {
         HStack(spacing: 0) {
             ForEach(MapMode.allCases, id: \.self) { mode in
                 Button {
                     // 觸覺反饋
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                     impactFeedback.impactOccurred()
                     
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                         viewModel.switchMode(to: mode)
                     }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: mode.iconName)
+                            .font(.system(size: 14, weight: .semibold))
                             .scaleEffect(viewModel.currentMode == mode ? 1.1 : 1.0)
+                            .rotationEffect(.degrees(viewModel.currentMode == mode ? 0 : -8))
+                        
                         Text(mode.rawValue)
+                            .font(.subheadline.weight(.semibold))
                     }
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(viewModel.currentMode == mode ? .white : .primary)
+                    .foregroundColor(viewModel.currentMode == mode ? .white : .secondary)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(
-                        viewModel.currentMode == mode
-                            ? (mode == .record ? Color.blue : Color.orange) : Color.clear
-                    )
-                    .cornerRadius(20)
+                    .background {
+                        if viewModel.currentMode == mode {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: mode == .record 
+                                            ? [Color.blue, Color.blue.opacity(0.85)]
+                                            : [Color.orange, Color.orange.opacity(0.85)]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .shadow(color: (mode == .record ? Color.blue : Color.orange).opacity(0.35), radius: 6, x: 0, y: 3)
+                                .matchedGeometryEffect(id: "modeBackground", in: modeSwitcherAnimation)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(ModeSwitchButtonStyle(isSelected: viewModel.currentMode == mode))
             }
         }
         .padding(4)
-        .background(Color(.systemBackground))
-        .cornerRadius(24)
-        .shadow(color: Color.black.opacity(0.15), radius: 5)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.systemBackground))
+                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(.separator).opacity(0.15), lineWidth: 0.5)
+        )
+    }
+    
+    // MARK: - Compact Mode Switcher
+    
+    /// 緊湊版地圖模式切換器（搜尋展開時顯示）
+    private var modeSwitcherCompact: some View {
+        Button {
+            // 觸覺反饋
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+            
+            // 切換到另一個模式
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
+                let nextMode: MapMode = viewModel.currentMode == .record ? .ask : .record
+                viewModel.switchMode(to: nextMode)
+            }
+        } label: {
+            ZStack {
+                // 背景漸變
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: viewModel.currentMode == .record 
+                                ? [Color.blue, Color.blue.opacity(0.8)]
+                                : [Color.orange, Color.orange.opacity(0.8)]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: (viewModel.currentMode == .record ? Color.blue : Color.orange).opacity(0.4),
+                           radius: 8, x: 0, y: 4)
+                
+                // 圖標（帶 3D 翻轉效果）
+                Image(systemName: viewModel.currentMode.iconName)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .rotation3DEffect(
+                        .degrees(viewModel.currentMode == .record ? 0 : 180),
+                        axis: (x: 0, y: 1, z: 0)
+                    )
+                    .scaleEffect(1.0)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.currentMode)
+            }
+            .frame(width: 44, height: 44)
+        }
+        .buttonStyle(CompactModeSwitchButtonStyle())
     }
 }
 
@@ -340,6 +427,28 @@ struct ScaleButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+/// 模式切換按鈕樣式
+struct ModeSwitchButtonStyle: ButtonStyle {
+    let isSelected: Bool
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+/// 緊湊版模式切換按鈕樣式
+struct CompactModeSwitchButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.85 : 1.0)
+            .brightness(configuration.isPressed ? -0.1 : 0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 

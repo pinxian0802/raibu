@@ -12,6 +12,7 @@ import SwiftUI
 struct MapSearchBar: View {
     @Binding var searchText: String
     @Binding var isSearchActive: Bool
+    @Binding var isExpanded: Bool // 新增：控制展開狀態
     let mapRegion: MKCoordinateRegion
     let onSearchResultSelected: (SearchResult) async -> Void
     let onSearchCleared: () -> Void
@@ -25,85 +26,99 @@ struct MapSearchBar: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 搜尋輸入框
-            searchField
-
-            // 搜尋建議下拉選單
-            if showSuggestions {
-                suggestionsDropdown
-                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+        // 搜尋輸入框
+        searchField
+            .overlay(alignment: .topLeading) {
+                // 建議列表使用 overlay，不影響佈局
+                if showSuggestions {
+                    suggestionsDropdown
+                        .frame(width: UIScreen.main.bounds.width - 32)
+                        .offset(y: 52) // 搜尋欄高度 44 + 間距 8
+                }
             }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .animation(.easeInOut(duration: 0.2), value: showSuggestions)
-        .onChange(of: searchText) { _, newValue in
-            searchCompleter.updateQuery(newValue, in: mapRegion)
-            // 當搜尋文字被清空時，清除地圖上的搜尋標記
-            if newValue.trimmingCharacters(in: .whitespaces).isEmpty {
-                onSearchCleared()
+            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isExpanded)
+            .animation(.easeInOut(duration: 0.2), value: showSuggestions)
+            .onChange(of: searchText) { _, newValue in
+                searchCompleter.updateQuery(newValue, in: mapRegion)
+                if newValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                    onSearchCleared()
+                }
             }
-        }
-        .onChange(of: isTextFieldFocused) { _, newValue in
-            if newValue {
-                isSearchActive = true
+            .onChange(of: isTextFieldFocused) { _, newValue in
+                if newValue {
+                    isSearchActive = true
+                }
             }
-        }
-        .onChange(of: isSearchActive) { _, newValue in
-            if !newValue {
-                isTextFieldFocused = false
+            .onChange(of: isSearchActive) { _, newValue in
+                if !newValue {
+                    isTextFieldFocused = false
+                }
             }
-        }
     }
 
     // MARK: - Search Field
 
     private var searchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .font(.system(size: 16, weight: .medium))
-                .scaleEffect(isTextFieldFocused ? 1.1 : 1.0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTextFieldFocused)
-
-            TextField("搜尋地點", text: $searchText)
-                .textFieldStyle(.plain)
-                .submitLabel(.search)
-                .focused($isTextFieldFocused)
-                .onSubmit {
-                    handleSearchSubmit()
+        HStack(spacing: 12) {
+            // 左側圖示（放大鏡 ↔ 返回箭頭）- 平滑變形
+            Button {
+                if isExpanded {
+                    collapseSearch()
+                } else {
+                    expandSearch()
                 }
-
-            // 搜尋中的 loading 動畫
-            if searchCompleter.isSearching {
-                ProgressView()
-                    .scaleEffect(0.8)
-                    .transition(.scale.combined(with: .opacity))
+            } label: {
+                Image(systemName: isExpanded ? "arrow.left" : "magnifyingglass")
+                    .font(.system(size: isExpanded ? 18 : 20, weight: .medium))
+                    .foregroundStyle(isExpanded ? .primary : .primary)
+                    .contentTransition(.symbolEffect(.replace))
             }
+            
+            // 搜尋框（展開時才顯示）
+            if isExpanded {
+                HStack(spacing: 10) {
+                    TextField("搜尋地點", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .submitLabel(.search)
+                        .focused($isTextFieldFocused)
+                        .onSubmit {
+                            handleSearchSubmit()
+                        }
 
-            if !searchText.isEmpty {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        clearSearch()
+                    // 搜尋中的 loading 動畫
+                    if searchCompleter.isSearching {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .transition(.scale.combined(with: .opacity))
                     }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 16))
+
+                    if !searchText.isEmpty {
+                        Button {
+                            clearSearchText()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                                .font(.system(size: 16))
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
                 }
-                .transition(.scale.combined(with: .opacity))
+                .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, isExpanded ? 16 : 12)
+        .padding(.vertical, isExpanded ? 10 : 12)
+        .frame(maxWidth: isExpanded ? .infinity : 44)
+        .frame(height: 44)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(
-            color: Color.black.opacity(isTextFieldFocused ? 0.15 : 0.1),
-            radius: isTextFieldFocused ? 8 : 5
+            color: Color.black.opacity(0.2),
+            radius: 8,
+            x: 0,
+            y: 2
         )
-        .scaleEffect(isTextFieldFocused ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isExpanded)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTextFieldFocused)
         .animation(.easeInOut(duration: 0.15), value: searchText.isEmpty)
         .animation(.easeInOut(duration: 0.15), value: searchCompleter.isSearching)
@@ -116,15 +131,22 @@ struct MapSearchBar: View {
             if searchCompleter.isSearching {
                 // 搜尋中顯示 loading
                 ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 60)
             } else if searchCompleter.suggestions.isEmpty {
                 // 搜尋結束後沒有建議地點
                 Text("沒有建議地點")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 60)
             } else {
-                // 建議列表
+                // 建議列表 - 根據內容數量調整高度
+                let itemHeight: CGFloat = 60 // 每個項目的大約高度
+                let maxVisibleItems = 5 // 最多顯示 5 個項目
+                let contentHeight = CGFloat(searchCompleter.suggestions.count) * itemHeight
+                let maxHeight: CGFloat = CGFloat(maxVisibleItems) * itemHeight
+                
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(searchCompleter.suggestions.enumerated()), id: \.offset) {
@@ -135,13 +157,12 @@ struct MapSearchBar: View {
                         }
                     }
                 }
+                .frame(height: min(contentHeight, maxHeight))
             }
         }
-        .frame(maxHeight: 250)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: Color.black.opacity(0.1), radius: 5)
-        .padding(.top, 4)
+        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 2)
     }
 
     // MARK: - Suggestion Row
@@ -191,6 +212,29 @@ struct MapSearchBar: View {
     }
 
     // MARK: - Actions
+    
+    /// 展開搜尋欄
+    private func expandSearch() {
+        isExpanded = true
+        // 延遲觸發鍵盤，讓展開動畫先完成
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isTextFieldFocused = true
+        }
+    }
+    
+    /// 收合搜尋欄
+    private func collapseSearch() {
+        isTextFieldFocused = false
+        isExpanded = false
+        clearSearch()
+    }
+    
+    /// 清除搜尋文字（但不改變展開狀態）
+    private func clearSearchText() {
+        searchText = ""
+        searchCompleter.clearResults()
+        onSearchCleared()
+    }
 
     private func selectSuggestion(_ completion: MKLocalSearchCompletion) {
         // 更新搜尋文字
@@ -234,8 +278,9 @@ struct MapSearchBar: View {
 
         VStack {
             MapSearchBar(
-                searchText: .constant("台北"),
+                searchText: .constant(""),
                 isSearchActive: .constant(false),
+                isExpanded: .constant(false),
                 mapRegion: MKCoordinateRegion(
                     center: CLLocationCoordinate2D(latitude: 25.0330, longitude: 121.5654),
                     span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
@@ -243,6 +288,7 @@ struct MapSearchBar: View {
                 onSearchResultSelected: { _ in },
                 onSearchCleared: {}
             )
+            .padding()
             Spacer()
         }
     }

@@ -7,77 +7,72 @@
 
 import SwiftUI
 
-/// 自定義 Tab Bar
+/// 自定義 Tab Bar - 簡潔扁平設計
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     let onCreateTapped: () -> Void
     
     @State private var isCreateButtonPressed = false
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
-        HStack(spacing: 0) {
-            // 地圖 Tab
-            TabBarButton(
-                icon: "map",
-                title: "地圖",
-                isSelected: selectedTab == 0
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+        VStack(spacing: 0) {
+            // 主要內容
+            HStack(spacing: 0) {
+                // 地圖 Tab
+                TabBarButton(
+                    icon: "map",
+                    iconFilled: "map.fill",
+                    title: "地圖",
+                    isSelected: selectedTab == 0
+                ) {
                     selectedTab = 0
                 }
-            }
-            
-            // 新增按鈕（中間大按鈕）
-            Button(action: {
-                // 觸覺反饋
-                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                impactFeedback.impactOccurred()
                 
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    isCreateButtonPressed = true
-                }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                        isCreateButtonPressed = false
-                    }
+                // 新增按鈕（簡潔版本，不凸起）
+                Button(action: {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                    impactFeedback.impactOccurred()
                     onCreateTapped()
+                }) {
+                    Image(systemName: "plus.app.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.blue)
+                        .frame(maxWidth: .infinity)
+                        .scaleEffect(isCreateButtonPressed ? 0.9 : 1.0)
                 }
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 56, height: 56)
-                        .shadow(color: Color.blue.opacity(0.3), radius: 8, y: 4)
-                    
-                    Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundColor(.white)
-                        .rotationEffect(.degrees(isCreateButtonPressed ? 90 : 0))
-                }
-                .scaleEffect(isCreateButtonPressed ? 0.9 : 1.0)
-            }
-            .offset(y: -16)
-            
-            // 個人 Tab
-            TabBarButton(
-                icon: "person.circle",
-                title: "個人",
-                isSelected: selectedTab == 2
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                .buttonStyle(PlainButtonStyle())
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            isCreateButtonPressed = true
+                        }
+                        .onEnded { _ in
+                            isCreateButtonPressed = false
+                        }
+                )
+                
+                // 個人 Tab
+                TabBarButton(
+                    icon: "person",
+                    iconFilled: "person.fill",
+                    title: "個人",
+                    isSelected: selectedTab == 2
+                ) {
                     selectedTab = 2
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 9)
+            .padding(.bottom, 0)
+            .background(
+                Color(colorScheme == .dark ? UIColor.systemBackground : UIColor.systemBackground)
+            )
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
-        .padding(.bottom, 24)
         .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
+            Color(colorScheme == .dark ? UIColor.systemBackground : UIColor.systemBackground)
+                .shadow(color: Color.black.opacity(0.08), radius: 10, y: -3)
                 .ignoresSafeArea(edges: .bottom)
-                .shadow(color: Color.black.opacity(0.05), radius: 8, y: -4)
         )
     }
 }
@@ -86,6 +81,7 @@ struct CustomTabBar: View {
 
 private struct TabBarButton: View {
     let icon: String
+    let iconFilled: String
     let title: String
     let isSelected: Bool
     let action: () -> Void
@@ -94,42 +90,32 @@ private struct TabBarButton: View {
     
     var body: some View {
         Button(action: {
-            // 觸覺反饋
             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
             impactFeedback.impactOccurred()
-            
             action()
         }) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 22))
+            VStack(spacing: 2) {
+                Image(systemName: isSelected ? iconFilled : icon)
+                    .font(.system(size: 20))
                     .foregroundColor(isSelected ? .blue : .gray)
-                    .scaleEffect(isSelected ? 1.1 : 1.0)
                 
                 Text(title)
-                    .font(.caption2)
-                    .fontWeight(isSelected ? .semibold : .regular)
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundColor(isSelected ? .blue : .gray)
             }
             .frame(maxWidth: .infinity)
-            .scaleEffect(isPressed ? 0.95 : 1.0)
-            .opacity(isPressed ? 0.7 : 1.0)
+            .scaleEffect(isPressed ? 0.92 : 1.0)
         }
         .buttonStyle(PlainButtonStyle())
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
-                    withAnimation(.easeInOut(duration: 0.1)) {
-                        isPressed = true
-                    }
+                    isPressed = true
                 }
                 .onEnded { _ in
-                    withAnimation(.easeInOut(duration: 0.1)) {
-                        isPressed = false
-                    }
+                    isPressed = false
                 }
         )
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
     }
 }
 
@@ -143,4 +129,5 @@ private struct TabBarButton: View {
             onCreateTapped: {}
         )
     }
+    .background(Color.gray.opacity(0.3))
 }
