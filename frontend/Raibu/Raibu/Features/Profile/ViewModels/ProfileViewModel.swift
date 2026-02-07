@@ -60,6 +60,11 @@ class ProfileViewModel: ObservableObject {
             let loadedProfile = try await userRepository.getMe()
             profile = loadedProfile
             hasLoadedProfile = true
+        } catch is CancellationError {
+            // Task 被取消，不視為錯誤
+            #if DEBUG
+            print("⚠️ 載入個人資料被取消")
+            #endif
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -78,8 +83,12 @@ class ProfileViewModel: ObservableObject {
             let records = try await userRepository.getMyRecords()
             myRecords = records
             hasLoadedRecords = true
+        } catch is CancellationError {
+            // Task 被取消，不視為錯誤
+            #if DEBUG
+            print("⚠️ 載入紀錄被取消")
+            #endif
         } catch {
-            // 靜默處理錯誤，不影響 UI
             #if DEBUG
             print("❌ 載入紀錄失敗: \(error.localizedDescription)")
             #endif
@@ -99,8 +108,12 @@ class ProfileViewModel: ObservableObject {
             let asks = try await userRepository.getMyAsks()
             myAsks = asks
             hasLoadedAsks = true
+        } catch is CancellationError {
+            // Task 被取消，不視為錯誤
+            #if DEBUG
+            print("⚠️ 載入詢問被取消")
+            #endif
         } catch {
-            // 靜默處理錯誤，不影響 UI
             #if DEBUG
             print("❌ 載入詢問失敗: \(error.localizedDescription)")
             #endif
@@ -111,20 +124,18 @@ class ProfileViewModel: ObservableObject {
     
     /// 刷新所有資料
     func refreshAll() async {
-        // 並行載入所有資料
-        async let profileTask: () = loadProfile(forceRefresh: true)
-        async let recordsTask: () = loadMyRecords(forceRefresh: true)
-        async let asksTask: () = loadMyAsks(forceRefresh: true)
-        
-        _ = await (profileTask, recordsTask, asksTask)
+        // 順序載入避免 Task 被取消時的競爭條件
+        await loadProfile(forceRefresh: true)
+        await loadMyRecords(forceRefresh: true)
+        await loadMyAsks(forceRefresh: true)
     }
     
-    /// 刷新列表資料（用於詳情頁關閉後）
+    /// 刷新列表與統計資料（用於詳情頁關閉後）
     func refreshLists() async {
-        async let recordsTask: () = loadMyRecords(forceRefresh: true)
-        async let asksTask: () = loadMyAsks(forceRefresh: true)
-        
-        _ = await (recordsTask, asksTask)
+        // 同時刷新 profile 以更新統計數據（紀錄數、詢問數、觀看數、愛心數）
+        await loadProfile(forceRefresh: true)
+        await loadMyRecords(forceRefresh: true)
+        await loadMyAsks(forceRefresh: true)
     }
     
     /// 重置所有載入狀態（用於登出後）

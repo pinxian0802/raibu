@@ -41,6 +41,7 @@ struct UserProfile: Codable {
     let totalRecords: Int
     let totalAsks: Int
     let totalViews: Int
+    let totalLikes: Int
     let createdAt: Date
     
     enum CodingKeys: String, CodingKey {
@@ -50,6 +51,8 @@ struct UserProfile: Codable {
         case totalRecords = "total_records"
         case totalAsks = "total_asks"
         case totalViews = "total_views"
+        case totalLikes = "total_likes"
         case createdAt = "created_at"
     }
 }
+

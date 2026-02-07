@@ -31,13 +31,11 @@ struct CustomTabBar: View {
                 
                 // 新增按鈕（簡潔版本，不凸起）
                 Button(action: {
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                    impactFeedback.impactOccurred()
                     onCreateTapped()
                 }) {
-                    Image(systemName: "plus.app.fill")
-                        .font(.system(size: 32))
-                        .foregroundColor(.blue)
+                    Image(systemName: "plus.app")
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity)
                         .scaleEffect(isCreateButtonPressed ? 0.9 : 1.0)
                 }

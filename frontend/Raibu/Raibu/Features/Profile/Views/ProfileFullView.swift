@@ -30,11 +30,8 @@ struct ProfileFullView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // 個人資料卡片
-                    profileCard
-                    
-                    // 統計資料
-                    statsSection
+                    // 個人資料區塊（頭像 + 名字 + 統計）
+                    profileHeader
                     
                     // 標籤切換
                     tabSection
@@ -68,10 +65,25 @@ struct ProfileFullView: View {
                 Button("取消", role: .cancel) {}
             }
         }
-        .task {
-            // 初次載入：並行載入所有資料
-            await viewModel.loadProfile()
-            await loadCurrentTabData()
+        .onAppear {
+            // 首次進入頁面時重置到「我的紀錄」標籤
+            selectedTab = 0
+            
+            // 首次進入頁面時刷新統計資料和紀錄列表
+            Task {
+                await viewModel.loadProfile(forceRefresh: true)
+                await viewModel.loadMyRecords(forceRefresh: true)
+            }
+        }
+        .onChange(of: navigationCoordinator.selectedTab) { _, newTab in
+            // 當從其他頁面切換到個人頁面時，刷新資料
+            if newTab == 2 {
+                selectedTab = 0  // 重置到「我的紀錄」標籤
+                Task {
+                    await viewModel.loadProfile(forceRefresh: true)
+                    await viewModel.loadMyRecords(forceRefresh: true)
+                }
+            }
         }
         .onChange(of: selectedTab) { _, newTab in
             // Tab 切換時載入對應資料
@@ -115,18 +127,18 @@ struct ProfileFullView: View {
         }
     }
     
-    // MARK: - Profile Card
+    // MARK: - Profile Header (頭像左邊、資訊右邊的水平排版)
     
-    private var profileCard: some View {
-        VStack(spacing: 16) {
-            // 頭像
+    private var profileHeader: some View {
+        HStack(alignment: .center, spacing: 24) {
+            // 左側：頭像
             KFImage(URL(string: viewModel.profile?.avatarUrl ?? ""))
                 .placeholder {
                     Circle()
                         .fill(Color(.systemGray4))
                         .overlay(
                             Image(systemName: "person.fill")
-                                .font(.system(size: 40))
+                                .font(.system(size: 45))
                                 .foregroundColor(.secondary)
                         )
                 }
@@ -138,78 +150,78 @@ struct ProfileFullView: View {
                 .frame(width: 100, height: 100)
                 .clipShape(Circle())
             
-            // 名稱
-            Text(viewModel.profile?.displayName ?? "使用者")
-                .font(.title2.weight(.semibold))
-            
-            // 加入時間
-            if let createdAt = viewModel.profile?.createdAt {
-                Text("加入於 \(formatDate(createdAt))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            // 右側：名字 + 統計數據
+            VStack(alignment: .leading, spacing: 16) {
+                // 名稱
+                Text(viewModel.profile?.displayName ?? "使用者")
+                    .font(.title.weight(.bold))
+                    .foregroundColor(.primary)
+                
+                // 統計數據（水平排列）
+                HStack(spacing: 24) {
+                    profileStatItem(
+                        value: viewModel.profile?.totalRecords ?? 0,
+                        label: "紀錄"
+                    )
+                    
+                    profileStatItem(
+                        value: viewModel.profile?.totalAsks ?? 0,
+                        label: "詢問"
+                    )
+                    
+                    profileStatItem(
+                        value: viewModel.profile?.totalViews ?? 0,
+                        label: "觀看"
+                    )
+                    
+                    profileStatItem(
+                        value: viewModel.profile?.totalLikes ?? 0,
+                        label: "按讚"
+                    )
+                }
             }
+            
+            Spacer()
         }
-        .padding()
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
     }
     
-    // MARK: - Stats Section
-    
-    private var statsSection: some View {
-        HStack(spacing: 0) {
-            statItem(
-                value: viewModel.profile?.totalRecords ?? 0,
-                label: "紀錄",
-                color: .blue
-            )
-            
-            Divider()
-                .frame(height: 40)
-            
-            statItem(
-                value: viewModel.profile?.totalAsks ?? 0,
-                label: "詢問",
-                color: .orange
-            )
-            
-            Divider()
-                .frame(height: 40)
-            
-            statItem(
-                value: viewModel.profile?.totalViews ?? 0,
-                label: "被觀看",
-                color: .green
-            )
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-        .padding(.horizontal)
-    }
-    
-    private func statItem(value: Int, label: String, color: Color) -> some View {
+    /// 個人頁面統計項目（簡潔版）
+    private func profileStatItem(value: Int, label: String) -> some View {
         VStack(spacing: 4) {
-            Text("\(value)")
-                .font(.title2.weight(.bold))
-                .foregroundColor(color)
+            Text(formatStatValue(value))
+                .font(.title3.weight(.bold))
+                .foregroundColor(.primary)
             
             Text(label)
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundColor(.secondary)
         }
-        .frame(maxWidth: .infinity)
+    }
+    
+    /// 格式化統計數值（大數字顯示為 k）
+    private func formatStatValue(_ value: Int) -> String {
+        if value >= 1000 {
+            let kValue = Double(value) / 1000.0
+            return String(format: "%.1fk", kValue)
+        }
+        return "\(value)"
     }
     
     // MARK: - Tab Section
     
     private var tabSection: some View {
         HStack(spacing: 0) {
+            Spacer()
             tabButton(title: "我的紀錄", index: 0)
+                .frame(width: 80)
+            Spacer()
+                .frame(width: 24)
             tabButton(title: "我的詢問", index: 1)
+                .frame(width: 80)
+            Spacer()
         }
-        .padding(4)
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
-        .padding(.horizontal)
     }
     
     private func tabButton(title: String, index: Int) -> some View {
@@ -222,32 +234,39 @@ struct ProfileFullView: View {
                 selectedTab = index
             }
         } label: {
-            Text(title)
-                .font(.subheadline.weight(.medium))
-                .foregroundColor(selectedTab == index ? .white : .primary)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity)
-                .background(
-                    selectedTab == index ?
-                    (index == 0 ? Color.blue : Color.orange) : Color.clear
-                )
-                .cornerRadius(8)
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.body.weight(selectedTab == index ? .semibold : .regular))
+                    .foregroundColor(selectedTab == index ? .primary : .secondary)
+                
+                // 底線指示器
+                Rectangle()
+                    .fill(selectedTab == index ? Color.primary : Color.clear)
+                    .frame(height: 2)
+            }
         }
         .buttonStyle(PlainButtonStyle())
     }
     
     // MARK: - List Content
     
+    /// 九宮格列定義 (3列)
+    private let gridColumns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2)
+    ]
+    
     @ViewBuilder
     private var listContent: some View {
         if selectedTab == 0 {
-            recordsList
+            recordsGrid
                 .transition(.asymmetric(
                     insertion: .move(edge: .leading).combined(with: .opacity),
                     removal: .opacity
                 ))
         } else {
-            asksList
+            asksGrid
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .opacity
@@ -255,12 +274,18 @@ struct ProfileFullView: View {
         }
     }
     
-    private var recordsList: some View {
-        VStack(spacing: 12) {
+    private var recordsGrid: some View {
+        Group {
             if viewModel.isLoadingRecords && viewModel.myRecords.isEmpty {
-                ForEach(0..<3, id: \.self) { _ in
-                    RecordRowSkeleton()
+                // 載入中骨架屏
+                LazyVGrid(columns: gridColumns, spacing: 2) {
+                    ForEach(0..<9, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color(.systemGray5))
+                            .aspectRatio(1, contentMode: .fit)
+                    }
                 }
+                .padding(.horizontal, 2)
             } else if viewModel.myRecords.isEmpty {
                 emptyStateView(
                     icon: "camera",
@@ -268,27 +293,34 @@ struct ProfileFullView: View {
                     subtitle: "開始分享你的第一個紀錄吧！"
                 )
             } else {
-                ForEach(viewModel.myRecords) { record in
-                    Button {
-                        // 從個人頁面進入時從第一張圖片開始
-                        selectedDetailItem = .record(id: record.id, imageIndex: 0)
-                    } label: {
-                        recordRow(record)
+                LazyVGrid(columns: gridColumns, spacing: 2) {
+                    ForEach(viewModel.myRecords) { record in
+                        Button {
+                            selectedDetailItem = .record(id: record.id, imageIndex: 0)
+                        } label: {
+                            recordGridItem(record)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(CardButtonStyle())
                 }
+                .padding(.horizontal, 2)
             }
         }
-        .padding(.horizontal)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.myRecords.count)
     }
     
-    private var asksList: some View {
-        VStack(spacing: 12) {
+    private var asksGrid: some View {
+        Group {
             if viewModel.isLoadingAsks && viewModel.myAsks.isEmpty {
-                ForEach(0..<3, id: \.self) { _ in
-                    AskRowSkeleton()
+                // 載入中骨架屏
+                LazyVGrid(columns: gridColumns, spacing: 2) {
+                    ForEach(0..<9, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color(.systemGray5))
+                            .aspectRatio(1, contentMode: .fit)
+                    }
                 }
+                .padding(.horizontal, 2)
             } else if viewModel.myAsks.isEmpty {
                 emptyStateView(
                     icon: "questionmark.circle",
@@ -296,93 +328,102 @@ struct ProfileFullView: View {
                     subtitle: "在地圖上長按開始提問！"
                 )
             } else {
-                ForEach(viewModel.myAsks) { ask in
-                    Button {
-                        selectedDetailItem = .ask(id: ask.id)
-                    } label: {
-                        askRow(ask)
+                LazyVGrid(columns: gridColumns, spacing: 2) {
+                    ForEach(viewModel.myAsks) { ask in
+                        Button {
+                            selectedDetailItem = .ask(id: ask.id)
+                        } label: {
+                            askGridItem(ask)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(CardButtonStyle())
                 }
+                .padding(.horizontal, 2)
             }
         }
-        .padding(.horizontal)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.myAsks.count)
     }
     
-    // MARK: - Row Views
+    // MARK: - Grid Item Views
     
-    private func recordRow(_ record: Record) -> some View {
-        HStack(spacing: 12) {
-            SquareThumbnailView(
-                url: record.mainImageUrl ?? "",
-                size: 60
-            )
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(record.description)
-                    .font(.subheadline)
-                    .lineLimit(2)
+    /// 紀錄九宮格項目（圖片 + 左下角愛心數）
+    private func recordGridItem(_ record: Record) -> some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                // 主圖片
+                KFImage(URL(string: record.mainImageUrl ?? ""))
+                    .placeholder {
+                        Rectangle()
+                            .fill(Color(.systemGray5))
+                    }
+                    .retry(maxCount: 2, interval: .seconds(1))
+                    .cacheOriginalImage()
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.width)
+                    .clipped()
                 
-                HStack(spacing: 12) {
-                    Label("\(record.likeCount)", systemImage: "heart.fill")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Label("\(record.viewCount)", systemImage: "eye.fill")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                // 左下角愛心數
+                HStack(spacing: 3) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 10))
+                    Text("\(record.likeCount)")
+                        .font(.caption2.weight(.medium))
                 }
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.black.opacity(0.5))
+                .cornerRadius(4)
+                .padding(6)
             }
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right")
-                .foregroundColor(.secondary)
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 5)
+        .aspectRatio(1, contentMode: .fit)
     }
     
-    private func askRow(_ ask: Ask) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.orange.opacity(0.1))
-                    .frame(width: 60, height: 60)
+    /// 詢問九宮格項目（問號圖示 + 左下角愛心數）
+    private func askGridItem(_ ask: Ask) -> some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                // 背景
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.orange.opacity(0.3), Color.orange.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                 
-                Image(systemName: "questionmark")
-                    .font(.title2.weight(.bold))
-                    .foregroundColor(.orange)
-            }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(ask.question)
-                    .font(.subheadline)
-                    .lineLimit(2)
-                
-                HStack(spacing: 12) {
-                    Text(ask.status == .active ? "進行中" : "已解決")
-                        .font(.caption)
-                        .foregroundColor(ask.status == .active ? .green : .secondary)
-                    
-                    Label("\(ask.likeCount)", systemImage: "heart.fill")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                // 中央問號圖示
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Image(systemName: "questionmark")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundColor(.orange)
+                        Spacer()
+                    }
+                    Spacer()
                 }
+                
+                // 左下角愛心數
+                HStack(spacing: 3) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 10))
+                    Text("\(ask.likeCount)")
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.black.opacity(0.5))
+                .cornerRadius(4)
+                .padding(6)
             }
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right")
-                .foregroundColor(.secondary)
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 5)
+        .aspectRatio(1, contentMode: .fit)
     }
     
     private func emptyStateView(icon: String, title: String, subtitle: String) -> some View {
