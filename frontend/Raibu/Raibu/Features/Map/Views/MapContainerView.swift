@@ -25,6 +25,7 @@ struct MapContainerView: View {
 struct MapContentView: View {
     let container: DIContainer
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @StateObject private var viewModel: MapViewModel
     @StateObject private var toastManager = ToastManager()
 
@@ -36,7 +37,6 @@ struct MapContentView: View {
     @State private var hideMarkers = false
 
     // Sheet 控制
-    @State private var selectedDetailItem: DetailSheetItem?
     @State private var clusterSheetData: ClusterSheetData?
 
     init(container: DIContainer) {
@@ -62,29 +62,11 @@ struct MapContentView: View {
                 bottomControls
             }
         }
-        .sheet(item: $selectedDetailItem) { item in
-            switch item {
-            case .record(let recordId, let imageIndex):
-                RecordDetailSheetView(
-                    recordId: recordId,
-                    initialImageIndex: imageIndex,
-                    recordRepository: container.recordRepository,
-                    replyRepository: container.replyRepository
-                )
-                .environmentObject(navigationCoordinator)
-            case .ask(let askId):
-                AskDetailSheetView(
-                    askId: askId,
-                    askRepository: container.askRepository,
-                    replyRepository: container.replyRepository
-                )
-                .environmentObject(navigationCoordinator)
-            }
-        }
         .sheet(item: $clusterSheetData) { data in
             ClusterGridSheetView(
                 items: data.items,
                 recordRepository: container.recordRepository,
+                askRepository: container.askRepository,
                 replyRepository: container.replyRepository
             )
             .environmentObject(navigationCoordinator)
@@ -192,10 +174,10 @@ struct MapContentView: View {
         switch item {
         case .recordImage(let image):
             // 傳遞 displayOrder 作為初始圖片索引
-            selectedDetailItem = .record(id: image.recordId, imageIndex: image.displayOrder)
+            detailSheetRouter.open(.record(id: image.recordId, imageIndex: image.displayOrder))
 
         case .ask(let ask):
-            selectedDetailItem = .ask(id: ask.id)
+            detailSheetRouter.open(.ask(id: ask.id))
         }
     }
 
@@ -454,19 +436,6 @@ struct CompactModeSwitchButtonStyle: ButtonStyle {
 
 // MARK: - Supporting Types
 
-/// 詳情 Sheet 項目類型
-enum DetailSheetItem: Identifiable {
-    case record(id: String, imageIndex: Int)
-    case ask(id: String)
-
-    var id: String {
-        switch self {
-        case .record(let id, let imageIndex): return "record-\(id)-\(imageIndex)"
-        case .ask(let id): return "ask-\(id)"
-        }
-    }
-}
-
 /// 建立詢問位置
 struct CreateAskLocation: Identifiable {
     let id = UUID()
@@ -484,4 +453,6 @@ struct ClusterSheetData: Identifiable {
 #Preview {
     MapContainerView()
         .environmentObject(DIContainer())
+        .environmentObject(NavigationCoordinator())
+        .environmentObject(DetailSheetRouter())
 }

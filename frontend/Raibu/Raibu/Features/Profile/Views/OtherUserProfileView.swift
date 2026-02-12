@@ -16,6 +16,7 @@ struct OtherUserProfileContentView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var container: DIContainer
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @StateObject private var viewModel: OtherUserProfileViewModel
     
     let userId: String
@@ -24,9 +25,6 @@ struct OtherUserProfileContentView: View {
     let showCloseButton: Bool
     
     @State private var selectedTab = 0
-    
-    // 詳情 Sheet 狀態
-    @State private var selectedDetailItem: DetailSheetItem?
     
     /// 外部傳入的 dismiss 閉包（用於 sheet 模式）
     var onDismiss: (() -> Void)?
@@ -80,29 +78,6 @@ struct OtherUserProfileContentView: View {
                 await loadCurrentTabData()
             }
         }
-        .sheet(item: $selectedDetailItem) { item in
-            switch item {
-            case .record(let recordId, let imageIndex):
-                RecordDetailSheetView(
-                    recordId: recordId,
-                    initialImageIndex: imageIndex,
-                    recordRepository: container.recordRepository,
-                    replyRepository: container.replyRepository
-                )
-                .environmentObject(navigationCoordinator)
-                .environmentObject(container)
-                .environmentObject(authService)
-            case .ask(let askId):
-                AskDetailSheetView(
-                    askId: askId,
-                    askRepository: container.askRepository,
-                    replyRepository: container.replyRepository
-                )
-                .environmentObject(navigationCoordinator)
-                .environmentObject(container)
-                .environmentObject(authService)
-            }
-        }
     }
     
     // MARK: - Load Data
@@ -118,73 +93,144 @@ struct OtherUserProfileContentView: View {
     // MARK: - Profile Header
     
     private var profileHeader: some View {
-        HStack(alignment: .center, spacing: 24) {
-            // 左側：頭像
-            KFImage(URL(string: viewModel.profile?.avatarUrl ?? ""))
-                .placeholder {
-                    Circle()
-                        .fill(Color(.systemGray4))
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 45))
-                                .foregroundColor(.secondary)
+        Group {
+            if viewModel.isLoading && viewModel.profile == nil {
+                profileHeaderSkeleton
+                    .transition(.opacity)
+            } else {
+                VStack(spacing: 36) {
+                    // 上方：頭像 + 名字 (名片樣式)
+                    HStack(spacing: 16) {
+                        // 頭像
+                        KFImage(URL(string: viewModel.profile?.avatarUrl ?? ""))
+                            .placeholder {
+                                Circle()
+                                    .fill(Color(.systemGray4))
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .font(.system(size: 65))
+                                            .foregroundColor(.secondary)
+                                    )
+                            }
+                            .retry(maxCount: 2, interval: .seconds(1))
+                            .cacheOriginalImage()
+                            .fade(duration: 0.2)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 100, height: 100)
+                            .clipShape(Circle())
+                        
+                        // 名稱與描述
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(viewModel.profile?.displayName ?? "使用者")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.primary)
+                                .multilineTextAlignment(.leading)
+                            
+                            if let bio = viewModel.profile?.bio, !bio.isEmpty {
+                                Text(bio)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(20)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(16)
+                    
+                    // 下方：統計數據
+                    HStack(spacing: 0) {
+                        profileStatItem(
+                            value: viewModel.profile?.totalRecords ?? viewModel.userRecords.count,
+                            label: "紀錄"
                         )
+                        .frame(maxWidth: .infinity)
+                        
+                        statSeparator
+                        
+                        profileStatItem(
+                            value: viewModel.profile?.totalAsks ?? viewModel.userAsks.count,
+                            label: "詢問"
+                        )
+                        .frame(maxWidth: .infinity)
+                        
+                        statSeparator
+                        
+                        profileStatItem(
+                            value: viewModel.profile?.totalLikes ?? 0,
+                            label: "按讚"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
                 }
-                .retry(maxCount: 2, interval: .seconds(1))
-                .cacheOriginalImage()
-                .fade(duration: 0.2)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 100, height: 100)
-                .clipShape(Circle())
-            
-            // 右側：名字 + 統計數據
-            VStack(alignment: .leading, spacing: 16) {
-                // 名稱
-                Text(viewModel.profile?.displayName ?? "使用者")
-                    .font(.title.weight(.bold))
-                    .foregroundColor(.primary)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .transition(.opacity)
+            }
+        }
+    }
+    
+    // MARK: - Loading Skeleton
+    
+    /// 他人頁面頭部骨架屏（與個人頁一致）
+    private var profileHeaderSkeleton: some View {
+        VStack(spacing: 36) {
+            // 上方：頭像 + 名字 (名片樣式)
+            HStack(spacing: 16) {
+                // 頭像
+                ShimmerCircle(size: 100)
                 
-                // 統計數據（水平排列）
-                HStack(spacing: 24) {
-                    profileStatItem(
-                        value: viewModel.profile?.totalRecords ?? 0,
-                        label: "紀錄"
-                    )
+                // 名稱與描述
+                VStack(alignment: .leading, spacing: 6) {
+                    ShimmerBox(width: 120, height: 24, cornerRadius: 4)
+                    ShimmerBox(width: 180, height: 16, cornerRadius: 4)
+                }
+                
+                Spacer()
+            }
+            .padding(20)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(16)
+            
+            // 下方：統計數據
+            HStack(spacing: 0) {
+                ForEach(0..<3, id: \.self) { index in
+                    VStack(spacing: 6) {
+                        ShimmerBox(width: 40, height: 16)
+                        ShimmerBox(width: 60, height: 26)
+                    }
+                    .frame(maxWidth: .infinity)
                     
-                    profileStatItem(
-                        value: viewModel.profile?.totalAsks ?? 0,
-                        label: "詢問"
-                    )
-                    
-                    profileStatItem(
-                        value: viewModel.profile?.totalViews ?? 0,
-                        label: "觀看"
-                    )
-                    
-                    profileStatItem(
-                        value: viewModel.profile?.totalLikes ?? 0,
-                        label: "按讚"
-                    )
+                    if index < 2 {
+                        statSeparator
+                    }
                 }
             }
-            
-            Spacer()
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 20)
     }
     
-    /// 個人頁面統計項目
+    private var statSeparator: some View {
+        Rectangle()
+            .fill(Color(.systemGray4))
+            .frame(width: 1, height: 24)
+    }
+    
+    /// 個人頁面統計項目（簡潔版）
     private func profileStatItem(value: Int, label: String) -> some View {
-        VStack(spacing: 4) {
-            Text(formatStatValue(value))
-                .font(.title3.weight(.bold))
-                .foregroundColor(.primary)
-            
+        VStack(spacing: 6) {
             Text(label)
-                .font(.subheadline)
+                .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.secondary)
+            
+            Text(formatStatValue(value))
+                .font(.custom("Copperplate", size: 22))
+                .foregroundColor(.primary)
         }
     }
     
@@ -203,31 +249,37 @@ struct OtherUserProfileContentView: View {
         HStack(spacing: 0) {
             Spacer()
             tabButton(title: "紀錄", index: 0)
-                .frame(width: 80)
+                .frame(width: 120)
             Spacer()
                 .frame(width: 24)
             tabButton(title: "詢問", index: 1)
-                .frame(width: 80)
+                .frame(width: 120)
             Spacer()
         }
     }
     
     private func tabButton(title: String, index: Int) -> some View {
         Button {
+            // 觸覺反饋
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+            
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 selectedTab = index
             }
         } label: {
             VStack(spacing: 8) {
                 Text(title)
-                    .font(.body.weight(selectedTab == index ? .semibold : .regular))
+                    .font(.system(size: 15, weight: selectedTab == index ? .bold : .medium))
                     .foregroundColor(selectedTab == index ? .primary : .secondary)
                 
+                // 底線指示器
                 Rectangle()
-                    .fill(selectedTab == index ? Color.orange : Color.clear)
+                    .fill(selectedTab == index ? Color.primary : Color.clear)
                     .frame(height: 2)
             }
         }
+        .buttonStyle(PlainButtonStyle())
     }
     
     // MARK: - List Content
@@ -244,16 +296,26 @@ struct OtherUserProfileContentView: View {
     
     private var recordsGrid: some View {
         Group {
-            if viewModel.isLoadingRecords {
-                ProgressView()
-                    .padding(.top, 40)
+            if viewModel.isLoadingRecords && viewModel.userRecords.isEmpty {
+                LazyVGrid(columns: gridColumns, spacing: 2) {
+                    ForEach(0..<9, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color(.systemGray5))
+                            .aspectRatio(1, contentMode: .fit)
+                    }
+                }
+                .padding(.horizontal, 2)
             } else if viewModel.userRecords.isEmpty {
-                emptyStateView(message: "還沒有紀錄")
+                emptyStateView(
+                    icon: "camera",
+                    title: "還沒有紀錄",
+                    subtitle: "這位使用者還沒發布紀錄。"
+                )
             } else {
                 LazyVGrid(columns: gridColumns, spacing: 2) {
                     ForEach(viewModel.userRecords) { record in
                         Button {
-                            selectedDetailItem = .record(id: record.id, imageIndex: 0)
+                            detailSheetRouter.open(.record(id: record.id, imageIndex: 0))
                         } label: {
                             recordGridItem(record)
                         }
@@ -263,20 +325,31 @@ struct OtherUserProfileContentView: View {
                 .padding(.horizontal, 2)
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.userRecords.count)
     }
     
     private var asksGrid: some View {
         Group {
-            if viewModel.isLoadingAsks {
-                ProgressView()
-                    .padding(.top, 40)
+            if viewModel.isLoadingAsks && viewModel.userAsks.isEmpty {
+                LazyVGrid(columns: gridColumns, spacing: 2) {
+                    ForEach(0..<9, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color(.systemGray5))
+                            .aspectRatio(1, contentMode: .fit)
+                    }
+                }
+                .padding(.horizontal, 2)
             } else if viewModel.userAsks.isEmpty {
-                emptyStateView(message: "還沒有詢問")
+                emptyStateView(
+                    icon: "questionmark.circle",
+                    title: "還沒有詢問",
+                    subtitle: "這位使用者還沒提出詢問。"
+                )
             } else {
                 LazyVGrid(columns: gridColumns, spacing: 2) {
                     ForEach(viewModel.userAsks) { ask in
                         Button {
-                            selectedDetailItem = .ask(id: ask.id)
+                            detailSheetRouter.open(.ask(id: ask.id))
                         } label: {
                             askGridItem(ask)
                         }
@@ -286,6 +359,7 @@ struct OtherUserProfileContentView: View {
                 .padding(.horizontal, 2)
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.userAsks.count)
     }
     
     // MARK: - Grid Configuration
@@ -325,7 +399,7 @@ struct OtherUserProfileContentView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(Color.black.opacity(0.6))
+                .background(Color.black.opacity(0.5))
                 .cornerRadius(4)
                 .padding(6)
             }
@@ -369,7 +443,7 @@ struct OtherUserProfileContentView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(Color.black.opacity(0.6))
+                .background(Color.black.opacity(0.5))
                 .cornerRadius(4)
                 .padding(6)
             }
@@ -378,16 +452,21 @@ struct OtherUserProfileContentView: View {
         .aspectRatio(1, contentMode: .fit)
     }
     
-    private func emptyStateView(message: String) -> some View {
+    private func emptyStateView(icon: String, title: String, subtitle: String) -> some View {
         VStack(spacing: 12) {
-            Image(systemName: "tray")
+            Image(systemName: icon)
                 .font(.system(size: 48))
-                .foregroundColor(.secondary)
-            Text(message)
+                .foregroundColor(.gray.opacity(0.5))
+            
+            Text(title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.primary)
+            
+            Text(subtitle)
+                .font(.system(size: 14))
                 .foregroundColor(.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        .padding(.vertical, 40)
     }
 }
 
@@ -420,6 +499,7 @@ struct OtherUserProfileView: View {
         userRepository: UserRepository(apiClient: APIClient(baseURL: "", authService: AuthService()))
     )
     .environmentObject(NavigationCoordinator())
+    .environmentObject(DetailSheetRouter())
     .environmentObject(DIContainer())
     .environmentObject(AuthService())
 }

@@ -18,6 +18,7 @@ struct AskDetailSheetView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @EnvironmentObject var container: DIContainer
     @StateObject private var viewModel: AskDetailViewModel
 
@@ -205,11 +206,8 @@ struct AskDetailSheetView: View {
 
         // 作者資訊
         if let author = ask.author {
-            NavigationLink {
-                OtherUserProfileContentView(
-                    userId: author.id,
-                    userRepository: container.userRepository
-                )
+            Button {
+                detailSheetRouter.open(.userProfile(id: author.id))
             } label: {
                 HStack(spacing: 12) {
                     KFImage(URL(string: author.avatarUrl ?? ""))

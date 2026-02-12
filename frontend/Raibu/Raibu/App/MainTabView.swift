@@ -12,6 +12,7 @@ struct MainTabView: View {
     @EnvironmentObject var container: DIContainer
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @EnvironmentObject var authService: AuthService
+    @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @State private var showCreateRecord = false
     @State private var previousTab: Int = 0
     
@@ -66,6 +67,7 @@ struct MainTabView: View {
                 recordRepository: container.recordRepository
             )
         }
+        .withGlobalDetailSheetHost()
     }
 }
 
@@ -76,4 +78,5 @@ struct MainTabView: View {
         .environmentObject(DIContainer())
         .environmentObject(NavigationCoordinator())
         .environmentObject(AuthService())
+        .environmentObject(DetailSheetRouter())
 }

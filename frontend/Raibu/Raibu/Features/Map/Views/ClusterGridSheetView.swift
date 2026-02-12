@@ -12,6 +12,7 @@ import Kingfisher
 struct ClusterGridSheetView: View {
     let items: [ClusterItem]
     let recordRepository: RecordRepository
+    let askRepository: AskRepository
     let replyRepository: ReplyRepository
     
     @State private var navigationPath = NavigationPath()
@@ -140,8 +141,11 @@ struct ClusterGridSheetView: View {
                 replyRepository: replyRepository
             )
         case .ask(let id):
-            // TODO: Add AskDetailContentView if needed
-            Text("Ask Detail: \(id)")
+            AskDetailSheetView(
+                askId: id,
+                askRepository: askRepository,
+                replyRepository: replyRepository
+            )
         }
     }
     

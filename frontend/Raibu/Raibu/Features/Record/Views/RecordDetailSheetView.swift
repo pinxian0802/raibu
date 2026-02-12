@@ -13,6 +13,7 @@ import Kingfisher
 struct RecordDetailSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @EnvironmentObject var container: DIContainer
     @StateObject private var viewModel: RecordDetailViewModel
     @State private var showReplyInput = false
@@ -187,11 +188,8 @@ struct RecordDetailSheetView: View {
     // MARK: - Author View
     
     private func authorView(author: User) -> some View {
-        NavigationLink {
-            OtherUserProfileContentView(
-                userId: author.id,
-                userRepository: container.userRepository
-            )
+        Button {
+            detailSheetRouter.open(.userProfile(id: author.id))
         } label: {
             HStack(spacing: 10) {
                 KFImage(URL(string: author.avatarUrl ?? ""))
@@ -403,4 +401,5 @@ struct ReplyRowView: View {
         recordRepository: RecordRepository(apiClient: APIClient(baseURL: "", authService: AuthService())),
         replyRepository: ReplyRepository(apiClient: APIClient(baseURL: "", authService: AuthService()))
     )
+    .environmentObject(DetailSheetRouter())
 }

@@ -14,16 +14,12 @@ struct ProfileFullView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var container: DIContainer
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @StateObject private var viewModel: ProfileViewModel
     
     @State private var selectedTab = 0
     @State private var showLogoutConfirmation = false
     @State private var showMoreOptions = false
-
-    
-    // 詳情 Sheet 狀態
-    @State private var selectedDetailItem: DetailSheetItem?
-    
     init(userRepository: UserRepository) {
         _viewModel = StateObject(wrappedValue: ProfileViewModel(userRepository: userRepository))
     }
@@ -105,25 +101,6 @@ struct ProfileFullView: View {
             // Tab 切換時載入對應資料
             Task {
                 await loadCurrentTabData()
-            }
-        }
-        .sheet(item: $selectedDetailItem) { item in
-            switch item {
-            case .record(let recordId, let imageIndex):
-                RecordDetailSheetView(
-                    recordId: recordId,
-                    initialImageIndex: imageIndex,
-                    recordRepository: container.recordRepository,
-                    replyRepository: container.replyRepository
-                )
-                .environmentObject(navigationCoordinator)
-            case .ask(let askId):
-                AskDetailSheetView(
-                    askId: askId,
-                    askRepository: container.askRepository,
-                    replyRepository: container.replyRepository
-                )
-                .environmentObject(navigationCoordinator)
             }
         }
     }
@@ -377,7 +354,7 @@ struct ProfileFullView: View {
                 LazyVGrid(columns: gridColumns, spacing: 2) {
                     ForEach(viewModel.myRecords) { record in
                         Button {
-                            selectedDetailItem = .record(id: record.id, imageIndex: 0)
+                            detailSheetRouter.open(.record(id: record.id, imageIndex: 0))
                         } label: {
                             recordGridItem(record)
                         }
@@ -414,7 +391,7 @@ struct ProfileFullView: View {
                 LazyVGrid(columns: gridColumns, spacing: 2) {
                     ForEach(viewModel.myAsks) { ask in
                         Button {
-                            selectedDetailItem = .ask(id: ask.id)
+                            detailSheetRouter.open(.ask(id: ask.id))
                         } label: {
                             askGridItem(ask)
                         }
@@ -553,5 +530,8 @@ struct CardButtonStyle: ButtonStyle {
     ProfileFullView(
         userRepository: UserRepository(apiClient: APIClient(baseURL: "", authService: AuthService()))
     )
+    .environmentObject(DIContainer())
+    .environmentObject(NavigationCoordinator())
+    .environmentObject(DetailSheetRouter())
     .environmentObject(AuthService())
 }
