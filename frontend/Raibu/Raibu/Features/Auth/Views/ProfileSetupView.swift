@@ -13,6 +13,7 @@ struct ProfileSetupView: View {
     @EnvironmentObject var container: DIContainer
     
     @State private var avatarImage: UIImage?
+    @State private var bio: String = ""
     @State private var isUploading = false
     @State private var errorMessage: String?
     
@@ -29,7 +30,7 @@ struct ProfileSetupView: View {
                     .font(.title)
                     .fontWeight(.bold)
                 
-                Text("設定你的頭貼，讓大家認識你")
+                Text("設定你的頭貼和個人描述")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -43,6 +44,20 @@ struct ProfileSetupView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+            
+            // 個人描述輸入框
+            VStack(alignment: .leading, spacing: 8) {
+                Text("個人描述")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                
+                TextField("介紹一下自己吧...", text: $bio, axis: .vertical)
+                    .lineLimit(3...5)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 32)
+            }
+            .padding(.horizontal, 32)
             
             if let error = errorMessage {
                 Text(error)
@@ -103,8 +118,8 @@ struct ProfileSetupView: View {
                 // Step 2: 上傳頭貼到 R2
                 try await uploadAvatarToR2(image: image, credential: credential)
                 
-                // Step 3: 更新 user profile
-                try await updateUserAvatar(avatarUrl: credential.publicUrl)
+                // Step 3: 更新 user profile（包含頭貼和描述）
+                try await updateUserProfile(avatarUrl: credential.publicUrl, bio: bio.isEmpty ? nil : bio)
                 
                 // Step 4: 完成，進入 App
                 await MainActor.run {
@@ -149,10 +164,11 @@ struct ProfileSetupView: View {
         )
     }
     
-    private func updateUserAvatar(avatarUrl: String) async throws {
+    private func updateUserProfile(avatarUrl: String, bio: String?) async throws {
+        let requestBody = UpdateUserRequest(avatarUrl: avatarUrl, bio: bio)
         let _: UpdateUserResponse = try await container.apiClient.patch(
             .updateMe,
-            body: UpdateUserRequest(avatarUrl: avatarUrl)
+            body: requestBody
         )
     }
 }
@@ -181,9 +197,11 @@ struct AvatarUploadCredential: Decodable {
 
 struct UpdateUserRequest: Encodable {
     let avatarUrl: String
+    let bio: String?
     
     enum CodingKeys: String, CodingKey {
         case avatarUrl = "avatar_url"
+        case bio
     }
 }
 

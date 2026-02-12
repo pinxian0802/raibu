@@ -11,6 +11,7 @@ import SwiftUI
 struct MainTabView: View {
     @EnvironmentObject var container: DIContainer
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var authService: AuthService
     @State private var showCreateRecord = false
     @State private var previousTab: Int = 0
     

@@ -35,6 +35,7 @@ router.get(
           authUser.email?.split("@")[0] ||
           "User",
         avatar_url: authUser.user_metadata?.avatar_url || null,
+        bio: null,
         total_records: 0,
         total_asks: 0,
         total_views: 0,
@@ -98,6 +99,7 @@ router.get(
       id: user.id,
       display_name: user.display_name,
       avatar_url: user.avatar_url,
+      bio: user.bio,
       total_records: recordsResult.count || 0,
       total_asks: asksResult.count || 0,
       total_views: totalViews,
@@ -228,7 +230,7 @@ router.patch(
   requireAuth,
   asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const { avatar_url, display_name } = req.body;
+    const { avatar_url, display_name, bio } = req.body;
 
     // 建立更新物件（只更新有傳入的欄位）
     const updates = {};
@@ -237,6 +239,9 @@ router.patch(
     }
     if (display_name !== undefined) {
       updates.display_name = display_name;
+    }
+    if (bio !== undefined) {
+      updates.bio = bio;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -254,6 +259,198 @@ router.patch(
     }
 
     res.json({ success: true });
+  }),
+);
+
+/**
+ * API E-5: 取得其他用戶的個人資訊
+ * GET /api/v1/users/:userId
+ */
+router.get(
+  "/:userId",
+  asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+
+    // 取得用戶資料
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", userId)
+      .single();
+
+    if (error || !user) {
+      throw Errors.notFound("使用者不存在");
+    }
+
+    // 計算統計資料
+    const [
+      recordsResult,
+      asksResult,
+      recordsViewsResult,
+      asksViewsResult,
+      recordsLikesResult,
+      asksLikesResult,
+    ] = await Promise.all([
+      // 紀錄數量
+      supabase
+        .from("records")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
+      // 詢問數量
+      supabase
+        .from("asks")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
+      // 紀錄的總觀看次數
+      supabase.from("records").select("view_count").eq("user_id", userId),
+      // 詢問的總觀看次數
+      supabase.from("asks").select("view_count").eq("user_id", userId),
+      // 紀錄的總愛心數
+      supabase.from("records").select("like_count").eq("user_id", userId),
+      // 詢問的總愛心數
+      supabase.from("asks").select("like_count").eq("user_id", userId),
+    ]);
+
+    // 計算總觀看次數
+    const recordsViews = (recordsViewsResult.data || []).reduce(
+      (sum, r) => sum + (r.view_count || 0),
+      0,
+    );
+    const asksViews = (asksViewsResult.data || []).reduce(
+      (sum, a) => sum + (a.view_count || 0),
+      0,
+    );
+    const totalViews = recordsViews + asksViews;
+
+    // 計算總愛心數
+    const recordsLikes = (recordsLikesResult.data || []).reduce(
+      (sum, r) => sum + (r.like_count || 0),
+      0,
+    );
+    const asksLikes = (asksLikesResult.data || []).reduce(
+      (sum, a) => sum + (a.like_count || 0),
+      0,
+    );
+    const totalLikes = recordsLikes + asksLikes;
+
+    res.json({
+      id: user.id,
+      display_name: user.display_name,
+      avatar_url: user.avatar_url,
+      bio: user.bio || null,
+      total_records: recordsResult.count || 0,
+      total_asks: asksResult.count || 0,
+      total_views: totalViews,
+      total_likes: totalLikes,
+      created_at: user.created_at,
+    });
+  }),
+);
+
+/**
+ * API E-6: 取得指定用戶的紀錄列表
+ * GET /api/v1/users/:userId/records
+ */
+router.get(
+  "/:userId/records",
+  asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+
+    const { data: records, error } = await supabase
+      .from("records")
+      .select(
+        "id, user_id, description, main_image_url, media_count, like_count, view_count, created_at, updated_at",
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw Errors.internal("查詢紀錄失敗");
+    }
+
+    const formattedRecords = (records || []).map((record) => ({
+      id: record.id,
+      user_id: record.user_id,
+      description: record.description,
+      main_image_url: record.main_image_url,
+      media_count: record.media_count || 0,
+      like_count: record.like_count || 0,
+      view_count: record.view_count || 0,
+      created_at: record.created_at,
+      updated_at: record.updated_at,
+    }));
+
+    res.json({ records: formattedRecords });
+  }),
+);
+
+/**
+ * API E-7: 取得指定用戶的詢問列表
+ * GET /api/v1/users/:userId/asks
+ */
+router.get(
+  "/:userId/asks",
+  asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+
+    // 使用 RPC 取得帶有座標的詢問
+    const { data: asksWithCoords, error: rpcError } = await supabase.rpc(
+      "get_asks_for_user",
+      { p_user_id: userId },
+    );
+
+    if (rpcError) {
+      console.warn("RPC not available, using basic query");
+      // Fallback：使用基本查詢
+      const { data: asks, error } = await supabase
+        .from("asks")
+        .select(
+          "id, user_id, center_geog, radius_meters, question, main_image_url, status, like_count, view_count, created_at, updated_at",
+        )
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw Errors.internal("查詢詢問失敗");
+      }
+
+      // 對於 Fallback，需要手動解析 center_geog
+      const formattedAsks = (asks || []).map((ask) => ({
+        id: ask.id,
+        user_id: ask.user_id,
+        center: { lat: 0, lng: 0 }, // Fallback 無法取得座標
+        radius_meters: ask.radius_meters,
+        question: ask.question,
+        main_image_url: ask.main_image_url,
+        status: ask.status,
+        like_count: ask.like_count || 0,
+        view_count: ask.view_count || 0,
+        created_at: ask.created_at,
+        updated_at: ask.updated_at,
+      }));
+
+      return res.json({ asks: formattedAsks });
+    }
+
+    // 轉換 RPC 回應格式
+    const formattedAsks = (asksWithCoords || []).map((ask) => ({
+      id: ask.id,
+      user_id: ask.user_id,
+      center: {
+        lat: ask.lat,
+        lng: ask.lng,
+      },
+      radius_meters: ask.radius_meters,
+      question: ask.question,
+      main_image_url: ask.main_image_url,
+      status: ask.status,
+      like_count: ask.like_count || 0,
+      view_count: ask.view_count || 0,
+      created_at: ask.created_at,
+      updated_at: ask.updated_at,
+    }));
+
+    res.json({ asks: formattedAsks });
   }),
 );
 

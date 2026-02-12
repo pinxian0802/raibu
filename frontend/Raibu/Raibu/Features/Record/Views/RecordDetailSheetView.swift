@@ -187,27 +187,36 @@ struct RecordDetailSheetView: View {
     // MARK: - Author View
     
     private func authorView(author: User) -> some View {
-        HStack(spacing: 10) {
-            KFImage(URL(string: author.avatarUrl ?? ""))
-                .placeholder {
-                    Circle()
-                        .fill(Color(.systemGray4))
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .foregroundColor(.secondary)
-                        )
-                }
-                .retry(maxCount: 2, interval: .seconds(1))
-                .cacheOriginalImage()
-                .fade(duration: 0.2)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 36, height: 36)
-                .clipShape(Circle())
-            
-            Text(author.displayName)
-                .font(.subheadline.weight(.medium))
+        NavigationLink {
+            OtherUserProfileContentView(
+                userId: author.id,
+                userRepository: container.userRepository
+            )
+        } label: {
+            HStack(spacing: 10) {
+                KFImage(URL(string: author.avatarUrl ?? ""))
+                    .placeholder {
+                        Circle()
+                            .fill(Color(.systemGray4))
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .foregroundColor(.secondary)
+                            )
+                    }
+                    .retry(maxCount: 2, interval: .seconds(1))
+                    .cacheOriginalImage()
+                    .fade(duration: 0.2)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                
+                Text(author.displayName)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.primary)
+            }
         }
+        .buttonStyle(PlainButtonStyle())
     }
     
     // MARK: - Replies Section

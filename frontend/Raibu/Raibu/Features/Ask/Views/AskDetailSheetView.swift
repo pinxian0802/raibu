@@ -205,41 +205,50 @@ struct AskDetailSheetView: View {
 
         // 作者資訊
         if let author = ask.author {
-            HStack(spacing: 12) {
-                KFImage(URL(string: author.avatarUrl ?? ""))
-                    .placeholder {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 40, height: 40)
-                    }
-                    .retry(maxCount: 2, interval: .seconds(1))
-                    .cacheOriginalImage()
-                    .fade(duration: 0.2)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 40, height: 40)
-                    .clipShape(Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(author.displayName)
-                        .font(.subheadline.weight(.medium))
-
-                    Text(formatDate(ask.createdAt))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                // 愛心按鈕
-                LikeButtonLarge(
-                    count: ask.likeCount,
-                    isLiked: ask.userHasLiked ?? false,
-                    action: {
-                        Task { await viewModel.toggleLike() }
-                    }
+            NavigationLink {
+                OtherUserProfileContentView(
+                    userId: author.id,
+                    userRepository: container.userRepository
                 )
+            } label: {
+                HStack(spacing: 12) {
+                    KFImage(URL(string: author.avatarUrl ?? ""))
+                        .placeholder {
+                            Circle()
+                                .fill(Color.gray.opacity(0.3))
+                                .frame(width: 40, height: 40)
+                        }
+                        .retry(maxCount: 2, interval: .seconds(1))
+                        .cacheOriginalImage()
+                        .fade(duration: 0.2)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 40, height: 40)
+                        .clipShape(Circle())
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(author.displayName)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.primary)
+
+                        Text(formatDate(ask.createdAt))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    // 愛心按鈕
+                    LikeButtonLarge(
+                        count: ask.likeCount,
+                        isLiked: ask.userHasLiked ?? false,
+                        action: {
+                            Task { await viewModel.toggleLike() }
+                        }
+                    )
+                }
             }
+            .buttonStyle(PlainButtonStyle())
         }
 
         Divider()

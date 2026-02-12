@@ -58,10 +58,16 @@ class APIClient {
         return try await execute(request)
     }
     
-    /// 發送 DELETE 請求
+    /// 發送 DELETE 請求 (無回傳)
     func delete(_ endpoint: APIEndpoint) async throws {
         let request = try buildRequest(for: endpoint, method: "DELETE")
         try await executeWithoutResponse(request)
+    }
+    
+    /// 發送 DELETE 請求 (有回傳)
+    func delete<T: Decodable>(_ endpoint: APIEndpoint) async throws -> T {
+        let request = try buildRequest(for: endpoint, method: "DELETE")
+        return try await execute(request)
     }
     
     /// 直接上傳至 Presigned URL (不經過 baseURL)

@@ -19,8 +19,7 @@ class UserRepository: UserRepositoryProtocol {
     
     /// 取得使用者資訊
     func getUserProfile(id: String) async throws -> User {
-        // 目前 API 只支援取得當前用戶
-        let profile: UserProfile = try await apiClient.get(.getMe)
+        let profile: UserProfile = try await apiClient.get(.getUserProfile(userId: id))
         return profile.toUser()
     }
     
@@ -36,15 +35,13 @@ class UserRepository: UserRepositoryProtocol {
     
     /// 取得使用者的紀錄列表
     func getUserRecords(userId: String, page: Int, limit: Int) async throws -> [Record] {
-        // 目前 API 只支援取得當前用戶的紀錄
-        let response: UserRecordsResponse = try await apiClient.get(.getMyRecords)
+        let response: UserRecordsResponse = try await apiClient.get(.getUserRecords(userId: userId))
         return response.records
     }
     
     /// 取得使用者的詢問列表
     func getUserAsks(userId: String, page: Int, limit: Int) async throws -> [Ask] {
-        // 目前 API 只支援取得當前用戶的詢問
-        let response: UserAsksResponse = try await apiClient.get(.getMyAsks)
+        let response: UserAsksResponse = try await apiClient.get(.getUserAsks(userId: userId))
         return response.asks
     }
     

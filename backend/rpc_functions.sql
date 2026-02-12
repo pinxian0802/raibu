@@ -368,3 +368,42 @@ BEGIN
   RETURN distance_meters <= (ask_record.radius_meters + p_tolerance_meters);
 END;
 $$ LANGUAGE plpgsql;
+
+-- 9. 取得特定用戶的詢問列表（含座標）
+CREATE OR REPLACE FUNCTION get_asks_for_user(
+  p_user_id UUID
+)
+RETURNS TABLE (
+  id UUID,
+  user_id UUID,
+  lng DOUBLE PRECISION,
+  lat DOUBLE PRECISION,
+  radius_meters INTEGER,
+  question TEXT,
+  main_image_url TEXT,
+  status TEXT,
+  like_count INTEGER,
+  view_count INTEGER,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    a.id,
+    a.user_id,
+    ST_X(a.center) AS lng,
+    ST_Y(a.center) AS lat,
+    a.radius_meters,
+    a.question,
+    a.main_image_url,
+    a.status,
+    a.like_count,
+    a.view_count,
+    a.created_at,
+    a.updated_at
+  FROM asks a
+  WHERE a.user_id = p_user_id
+  ORDER BY a.created_at DESC;
+END;
+$$ LANGUAGE plpgsql;

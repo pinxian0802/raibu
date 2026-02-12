@@ -12,6 +12,7 @@ struct User: Codable, Identifiable, Equatable {
     let id: String
     let displayName: String
     let avatarUrl: String?
+    let bio: String?
     let totalViews: Int?
     let createdAt: Date?
     
@@ -19,15 +20,17 @@ struct User: Codable, Identifiable, Equatable {
         case id
         case displayName = "display_name"
         case avatarUrl = "avatar_url"
+        case bio
         case totalViews = "total_views"
         case createdAt = "created_at"
     }
     
     // 明確初始化器
-    init(id: String, displayName: String, avatarUrl: String? = nil, totalViews: Int? = nil, createdAt: Date? = nil) {
+    init(id: String, displayName: String, avatarUrl: String? = nil, bio: String? = nil, totalViews: Int? = nil, createdAt: Date? = nil) {
         self.id = id
         self.displayName = displayName
         self.avatarUrl = avatarUrl
+        self.bio = bio
         self.totalViews = totalViews
         self.createdAt = createdAt
     }
@@ -38,6 +41,7 @@ struct UserProfile: Codable {
     let id: String
     let displayName: String
     let avatarUrl: String?
+    let bio: String?
     let totalRecords: Int
     let totalAsks: Int
     let totalViews: Int
@@ -48,6 +52,7 @@ struct UserProfile: Codable {
         case id
         case displayName = "display_name"
         case avatarUrl = "avatar_url"
+        case bio
         case totalRecords = "total_records"
         case totalAsks = "total_asks"
         case totalViews = "total_views"

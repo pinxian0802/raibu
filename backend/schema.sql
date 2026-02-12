@@ -13,6 +13,7 @@ CREATE TABLE public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id),
   display_name TEXT,
   avatar_url TEXT,
+  bio TEXT,
   total_views INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );

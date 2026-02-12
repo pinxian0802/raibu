@@ -110,7 +110,7 @@ app.get("/", (req, res) => {
   res.json({
     status: "ok",
     message: "Raibu Backend API v1",
-    version: "3.1",
+    version: "3.2",
     environment: process.env.NODE_ENV || "development",
     endpoints: {
       upload: "/api/v1/upload",

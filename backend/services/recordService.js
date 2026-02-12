@@ -70,7 +70,10 @@ class RecordService {
       if (queryError) throw Errors.internal('查詢失敗');
 
       return (images || []).map(img => ({
-        ...img,
+        image_id: img.id,
+        record_id: img.record_id,
+        thumbnail_public_url: img.thumbnail_public_url,
+        display_order: img.display_order,
         created_at: img.uploaded_at
       }));
     }
