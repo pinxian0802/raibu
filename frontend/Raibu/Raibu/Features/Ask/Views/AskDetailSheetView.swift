@@ -17,6 +17,7 @@ struct AskDetailSheetView: View {
     let replyRepository: ReplyRepository
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.globalDetailSheetContentTopSpacing) private var globalDetailSheetContentTopSpacing
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @EnvironmentObject var container: DIContainer
@@ -46,7 +47,7 @@ struct AskDetailSheetView: View {
                 .fill(Color(.systemGray3))
                 .frame(width: 36, height: 5)
                 .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.bottom, 4 + globalDetailSheetContentTopSpacing)
 
             NavigationView {
                 ScrollView {

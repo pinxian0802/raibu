@@ -16,6 +16,7 @@ class RecordDetailViewModel: ObservableObject {
     @Published var replies: [Reply] = []
     @Published var isLoading = true
     @Published var errorMessage: String?
+    @Published var isSubmittingReply = false
     
     // 互動
     @Published var isLiked = false
@@ -24,6 +25,9 @@ class RecordDetailViewModel: ObservableObject {
     // 刪除確認
     @Published var showDeleteConfirmation = false
     @Published var isDeleting = false
+    
+    // 關注 (Mock)
+    @Published var isFollowed = false
     
     // MARK: - Properties
     
@@ -208,6 +212,43 @@ class RecordDetailViewModel: ObservableObject {
                 }
             }
         }
+    }
+    
+    /// 建立留言
+    func createReply(content: String) async -> Bool {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContent.isEmpty else { return false }
+        
+        await MainActor.run {
+            isSubmittingReply = true
+        }
+        
+        do {
+            let reply = try await replyRepository.createReplyForRecord(
+                recordId: recordId,
+                content: trimmedContent,
+                images: nil
+            )
+            
+            await MainActor.run {
+                replies.append(reply)
+                isSubmittingReply = false
+            }
+            
+            return true
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isSubmittingReply = false
+            }
+            
+            return false
+        }
+    }
+    
+    /// 切換關注狀態 (Mock)
+    func toggleFollow() {
+        isFollowed.toggle()
     }
     
     /// 刪除紀錄

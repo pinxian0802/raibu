@@ -9,6 +9,63 @@ const { asyncHandler } = require('../middleware/errorHandler');
 const { Errors } = require('../utils/errorCodes');
 const { isWithinRadius, isValidCoordinate } = require('../utils/geo');
 
+async function getReplyImages(replyId) {
+  const { data: imagesWithLocation, error: imgRpcError } = await supabase.rpc('get_reply_images_with_location', {
+    p_reply_id: replyId
+  });
+
+  if (imgRpcError) {
+    // RPC 不存在，使用普通查詢
+    const { data: basicImages } = await supabase
+      .from('image_media')
+      .select('id, original_public_url, thumbnail_public_url, display_order')
+      .eq('reply_id', replyId)
+      .order('display_order');
+    return basicImages || [];
+  }
+
+  return (imagesWithLocation || []).map(img => ({
+    id: img.id,
+    original_public_url: img.original_public_url,
+    thumbnail_public_url: img.thumbnail_public_url,
+    display_order: img.display_order,
+    location: (img.lng !== null && img.lat !== null) ? {
+      lng: img.lng,
+      lat: img.lat
+    } : null
+  }));
+}
+
+async function enrichReply(reply, currentUserId) {
+  const images = await getReplyImages(reply.id);
+
+  // 檢查當前用戶是否已點讚
+  let userHasLiked = false;
+  if (currentUserId) {
+    const { data: like } = await supabase
+      .from('likes')
+      .select('id')
+      .eq('reply_id', reply.id)
+      .eq('user_id', currentUserId)
+      .single();
+    userHasLiked = !!like;
+  }
+
+  return {
+    id: reply.id,
+    record_id: reply.record_id,
+    ask_id: reply.ask_id,
+    user_id: reply.user_id,
+    content: reply.content,
+    is_onsite: reply.is_onsite || false,
+    like_count: reply.like_count || 0,
+    created_at: reply.created_at,
+    author: reply.users || null,
+    images: images || [],
+    user_has_liked: userHasLiked,
+  };
+}
+
 /**
  * API D-1: 建立回覆
  * POST /api/v1/replies
@@ -84,7 +141,10 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
       content,
       is_onsite: isOnsite,
     })
-    .select()
+    .select(`
+      *,
+      users:user_id (id, display_name, avatar_url)
+    `)
     .single();
 
   if (replyError) {
@@ -105,16 +165,8 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
     }
   }
 
-  res.status(201).json({
-    id: reply.id,
-    record_id: reply.record_id,
-    ask_id: reply.ask_id,
-    user_id: reply.user_id,
-    content: reply.content,
-    is_onsite: reply.is_onsite,
-    like_count: reply.like_count || 0,
-    created_at: reply.created_at,
-  });
+  const enrichedReply = await enrichReply(reply, userId);
+  res.status(201).json(enrichedReply);
 }));
 
 /**
@@ -152,60 +204,7 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
 
   // 取得每個回覆的圖片
   const repliesWithImages = await Promise.all(
-    (replies || []).map(async (reply) => {
-      // 取得回覆的圖片（含位置座標）
-      let images = [];
-      const { data: imagesWithLocation, error: imgRpcError } = await supabase.rpc('get_reply_images_with_location', {
-        p_reply_id: reply.id
-      });
-      
-      if (imgRpcError) {
-        // RPC 不存在，使用普通查詢
-        const { data: basicImages } = await supabase
-          .from('image_media')
-          .select('id, original_public_url, thumbnail_public_url, display_order')
-          .eq('reply_id', reply.id)
-          .order('display_order');
-        images = basicImages || [];
-      } else {
-        images = (imagesWithLocation || []).map(img => ({
-          id: img.id,
-          original_public_url: img.original_public_url,
-          thumbnail_public_url: img.thumbnail_public_url,
-          display_order: img.display_order,
-          location: (img.lng !== null && img.lat !== null) ? {
-            lng: img.lng,
-            lat: img.lat
-          } : null
-        }));
-      }
-
-      // 檢查當前用戶是否已點讚
-      let userHasLiked = false;
-      if (currentUserId) {
-        const { data: like } = await supabase
-          .from('likes')
-          .select('id')
-          .eq('reply_id', reply.id)
-          .eq('user_id', currentUserId)
-          .single();
-        userHasLiked = !!like;
-      }
-
-      return {
-        id: reply.id,
-        record_id: reply.record_id,
-        ask_id: reply.ask_id,
-        user_id: reply.user_id,
-        content: reply.content,
-        is_onsite: reply.is_onsite || false,
-        like_count: reply.like_count || 0,
-        created_at: reply.created_at,
-        author: reply.users,
-        images: images || [],
-        user_has_liked: userHasLiked,
-      };
-    })
+    (replies || []).map((reply) => enrichReply(reply, currentUserId))
   );
 
   res.json({ replies: repliesWithImages });

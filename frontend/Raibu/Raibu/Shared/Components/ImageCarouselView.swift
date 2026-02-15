@@ -13,6 +13,8 @@ import Kingfisher
 struct ImageCarouselView: View {
     let images: [ImageMedia]
     let initialIndex: Int  // 錨點：被點擊的圖片 Index
+    let imageContentMode: SwiftUI.ContentMode
+    let imageHeight: CGFloat
     var onImageTap: ((ImageMedia) -> Void)?  // 點擊圖片的回調
     var onLocationTap: ((ImageMedia) -> Void)?  // 點擊「查看位置」按鈕的回調
     
@@ -22,17 +24,21 @@ struct ImageCarouselView: View {
     init(
         images: [ImageMedia],
         initialIndex: Int = 0,
+        imageContentMode: SwiftUI.ContentMode = .fit,
+        imageHeight: CGFloat = 280,
         onImageTap: ((ImageMedia) -> Void)? = nil,
         onLocationTap: ((ImageMedia) -> Void)? = nil
     ) {
         self.images = images
         self.initialIndex = initialIndex
+        self.imageContentMode = imageContentMode
+        self.imageHeight = imageHeight
         self.onImageTap = onImageTap
         self.onLocationTap = onLocationTap
     }
     
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             // 圖片輪播
             TabView(selection: $currentIndex) {
                 ForEach(images.indices, id: \.self) { index in
@@ -44,6 +50,17 @@ struct ImageCarouselView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: imageHeight)
+            .overlay(alignment: .bottomLeading) {
+                if let currentImage = currentImageWithLocation {
+                    locationButton(for: currentImage)
+                        .padding(12)
+                }
+            }
+            
+            if !images.isEmpty {
+                imageMetaView(for: images[currentIndex])
+            }
             
             // 自訂頁面指示器
             if images.count > 1 {
@@ -62,9 +79,8 @@ struct ImageCarouselView: View {
     // MARK: - Subviews
     
     private func imageView(for image: ImageMedia) -> some View {
-        VStack(spacing: 8) {
-            // 圖片區
-            ZStack(alignment: .bottomLeading) {
+        ZStack {
+            if imageContentMode == .fill {
                 KFImage(URL(string: image.originalPublicUrl))
                     .placeholder {
                         Rectangle()
@@ -75,57 +91,80 @@ struct ImageCarouselView: View {
                     .cacheOriginalImage()
                     .fade(duration: 0.2)
                     .resizable()
-                    .scaledToFit()
-                
-                // 查看位置按鈕 - 只有圖片有位置資訊時顯示
-                if image.location != nil {
-                    Button {
-                        onLocationTap?(image)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "location.fill")
-                                .font(.system(size: 12, weight: .medium))
-                            Text("查看位置")
-                                .font(.caption.weight(.medium))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.6))
-                        )
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            } else {
+                KFImage(URL(string: image.originalPublicUrl))
+                    .placeholder {
+                        Rectangle()
+                            .fill(Color(.systemGray5))
+                            .shimmer()
                     }
-                    .padding(12)
+                    .retry(maxCount: 2, interval: .seconds(1))
+                    .cacheOriginalImage()
+                    .fade(duration: 0.2)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: imageHeight)
+        .clipped()
+    }
+
+    private var currentImageWithLocation: ImageMedia? {
+        guard images.indices.contains(currentIndex) else { return nil }
+        let image = images[currentIndex]
+        return image.location == nil ? nil : image
+    }
+
+    private func locationButton(for image: ImageMedia) -> some View {
+        Button {
+            onLocationTap?(image)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 12, weight: .medium))
+                Text("查看位置")
+                    .font(.caption.weight(.medium))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.6))
+            )
+        }
+    }
+    
+    private func imageMetaView(for image: ImageMedia) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // 地址
+            if image.location != nil {
+                // 優先使用資料庫中的地址
+                if let address = image.address, !address.isEmpty {
+                    Text(address)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                } else {
+                    // 回退：即時 geocoding（用於舊資料）
+                    AddressText(location: image.location!)
                 }
             }
             
-            // 地址與時間顯示區（靠左對齊）
-            VStack(alignment: .leading, spacing: 4) {
-                // 地址
-                if image.location != nil {
-                    // 優先使用資料庫中的地址
-                    if let address = image.address, !address.isEmpty {
-                        Text(address)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    } else {
-                        // 回退：即時 geocoding（用於舊資料）
-                        AddressText(location: image.location!)
-                    }
-                }
-                
-                // 拍攝時間
-                if let capturedAt = image.capturedAt {
-                    Text(formatCapturedAt(capturedAt))
-                        .font(.caption2)
-                        .foregroundColor(.secondary.opacity(0.8))
-                }
+            // 拍攝時間
+            if let capturedAt = image.capturedAt {
+                Text(formatCapturedAt(capturedAt))
+                    .font(.caption2)
+                    .foregroundColor(.secondary.opacity(0.8))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
     }
     
     private var pageIndicators: some View {
@@ -143,7 +182,7 @@ struct ImageCarouselView: View {
     /// 格式化拍攝時間
     private func formatCapturedAt(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd HH:mm"
+        formatter.dateFormat = "yyyy/MM/dd"
         return formatter.string(from: date)
     }
 }

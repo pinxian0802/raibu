@@ -7,12 +7,24 @@
 
 import SwiftUI
 
+private struct GlobalDetailSheetContentTopSpacingKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    var globalDetailSheetContentTopSpacing: CGFloat {
+        get { self[GlobalDetailSheetContentTopSpacingKey.self] }
+        set { self[GlobalDetailSheetContentTopSpacingKey.self] = newValue }
+    }
+}
+
 /// 全域詳情 Sheet Host（App 內僅掛載一次）
 struct GlobalDetailSheetHost: ViewModifier {
     @EnvironmentObject var container: DIContainer
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @EnvironmentObject var detailSheetRouter: DetailSheetRouter
+    private let globalSheetContentTopSpacing: CGFloat = 20
 
     func body(content: Content) -> some View {
         content
@@ -31,6 +43,7 @@ struct GlobalDetailSheetHost: ViewModifier {
                     }
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
+                    .environment(\.globalDetailSheetContentTopSpacing, globalSheetContentTopSpacing)
                 } else {
                     EmptyView()
                         .onAppear {
@@ -81,4 +94,3 @@ extension View {
         modifier(GlobalDetailSheetHost())
     }
 }
-

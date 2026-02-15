@@ -18,6 +18,7 @@ struct BottomSheetView<Content: View>: View {
     
     private let height: CGFloat = UIScreen.main.bounds.height * 0.75
     private let dismissThreshold: CGFloat = 100
+    private let contentTopPadding: CGFloat = 100
     
     init(isPresented: Binding<Bool>, @ViewBuilder content: () -> Content, onDismiss: (() -> Void)? = nil) {
         self._isPresented = isPresented
@@ -45,6 +46,7 @@ struct BottomSheetView<Content: View>: View {
                     
                     // 內容
                     content
+                        .padding(.top, contentTopPadding)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(height: height)
@@ -67,7 +69,7 @@ struct BottomSheetView<Content: View>: View {
             Capsule()
                 .fill(Color.secondary.opacity(0.4))
                 .frame(width: 36, height: 5)
-                .padding(.top, 8)
+                .padding(.top, 60)
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity)
