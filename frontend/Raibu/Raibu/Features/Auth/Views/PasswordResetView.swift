@@ -84,7 +84,7 @@ struct PasswordResetView: View {
                     if !isOTPVerified && !isResetComplete {
                         Text(email)
                             .fontWeight(.semibold)
-                            .foregroundColor(.orange)
+                            .foregroundColor(.brandOrange)
                             .font(.subheadline)
                     }
                 }
@@ -167,7 +167,7 @@ struct PasswordResetView: View {
             if otpAttempts > 0 && !isLocked {
                 Text("剩餘嘗試次數：\(maxAttempts - otpAttempts)")
                     .font(.caption)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.brandOrange)
             }
             
             // 鎖定倒計時
@@ -191,7 +191,7 @@ struct PasswordResetView: View {
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(canVerifyOTP ? Color.blue : Color.gray)
+            .background(canVerifyOTP ? Color.brandBlue : Color.gray)
             .foregroundColor(.white)
             .cornerRadius(10)
             .disabled(!canVerifyOTP)
@@ -240,7 +240,7 @@ struct PasswordResetView: View {
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(isPasswordValid ? Color.orange : Color.gray)
+            .background(isPasswordValid ? Color.brandOrange : Color.gray)
             .foregroundColor(.white)
             .cornerRadius(10)
             .disabled(!isPasswordValid || isLoading)
@@ -312,7 +312,7 @@ struct PasswordResetView: View {
         } else if isOTPVerified {
             return .green
         } else {
-            return .orange
+            return .brandOrange
         }
     }
     
@@ -322,7 +322,7 @@ struct PasswordResetView: View {
         } else if isOTPVerified {
             return Color.green.opacity(0.1)
         } else {
-            return Color.orange.opacity(0.1)
+            return Color.brandOrange.opacity(0.1)
         }
     }
     

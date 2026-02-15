@@ -26,7 +26,7 @@ struct OTPDigitBox: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isFocused ? Color.blue : Color.clear, lineWidth: 2)
+                    .stroke(isFocused ? Color.brandBlue : Color.clear, lineWidth: 2)
             )
             .onChange(of: digit) { oldValue, newValue in
                 // 只保留數字

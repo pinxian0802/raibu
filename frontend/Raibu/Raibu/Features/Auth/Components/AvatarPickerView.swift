@@ -40,7 +40,7 @@ struct AvatarPickerView: View {
                 
                 // 相機圖示 overlay
                 Circle()
-                    .fill(Color.blue)
+                    .fill(Color.brandBlue)
                     .frame(width: size * 0.3, height: size * 0.3)
                     .overlay(
                         Image(systemName: "camera.fill")

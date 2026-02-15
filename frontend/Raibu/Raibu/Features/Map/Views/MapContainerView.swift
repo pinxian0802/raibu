@@ -246,7 +246,7 @@ struct MapContentView: View {
                         .foregroundColor(hideMarkers ? .white : .primary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(hideMarkers ? Color.blue : Color(.systemBackground))
+                        .background(hideMarkers ? Color.brandBlue : Color(.systemBackground))
                         .clipShape(Capsule())
                         .shadow(color: Color.black.opacity(0.1), radius: 3)
                     }
@@ -327,13 +327,13 @@ struct MapContentView: View {
                                 .fill(
                                     LinearGradient(
                                         gradient: Gradient(colors: mode == .record 
-                                            ? [Color.blue, Color.blue.opacity(0.85)]
-                                            : [Color.orange, Color.orange.opacity(0.85)]),
+                                            ? [Color.brandBlue, Color.brandBlue.opacity(0.85)]
+                                            : [Color.brandOrange, Color.brandOrange.opacity(0.85)]),
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     )
                                 )
-                                .shadow(color: (mode == .record ? Color.blue : Color.orange).opacity(0.35), radius: 6, x: 0, y: 3)
+                                .shadow(color: (mode == .record ? Color.brandBlue : Color.brandOrange).opacity(0.35), radius: 6, x: 0, y: 3)
                                 .matchedGeometryEffect(id: "modeBackground", in: modeSwitcherAnimation)
                         }
                     }
@@ -375,13 +375,13 @@ struct MapContentView: View {
                     .fill(
                         LinearGradient(
                             gradient: Gradient(colors: viewModel.currentMode == .record 
-                                ? [Color.blue, Color.blue.opacity(0.8)]
-                                : [Color.orange, Color.orange.opacity(0.8)]),
+                                ? [Color.brandBlue, Color.brandBlue.opacity(0.8)]
+                                : [Color.brandOrange, Color.brandOrange.opacity(0.8)]),
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
-                    .shadow(color: (viewModel.currentMode == .record ? Color.blue : Color.orange).opacity(0.4),
+                    .shadow(color: (viewModel.currentMode == .record ? Color.brandBlue : Color.brandOrange).opacity(0.4),
                            radius: 8, x: 0, y: 4)
                 
                 // 圖標（帶 3D 翻轉效果）

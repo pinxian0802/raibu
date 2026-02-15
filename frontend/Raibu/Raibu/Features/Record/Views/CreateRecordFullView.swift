@@ -105,7 +105,7 @@ struct CreateRecordFullView: View {
             // GPS 提示
             HStack(spacing: 6) {
                 Image(systemName: "location.fill")
-                    .foregroundColor(.blue)
+                    .foregroundColor(.brandBlue)
                 Text("僅顯示有 GPS 資訊的照片")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -121,11 +121,11 @@ struct CreateRecordFullView: View {
             VStack(spacing: 12) {
                 Image(systemName: "photo.on.rectangle.angled")
                     .font(.system(size: 40))
-                    .foregroundColor(.blue)
+                    .foregroundColor(.brandBlue)
                 
                 Text("選擇照片")
                     .font(.headline)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.brandBlue)
                 
                 Text("從相簿中選取有 GPS 資訊的照片")
                     .font(.caption)
@@ -135,7 +135,7 @@ struct CreateRecordFullView: View {
             .padding(.vertical, 40)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.blue, style: StrokeStyle(lineWidth: 2, dash: [8]))
+                    .strokeBorder(Color.brandBlue, style: StrokeStyle(lineWidth: 2, dash: [8]))
             )
         }
         .padding(.horizontal)
@@ -189,7 +189,7 @@ struct CreateRecordFullView: View {
                 .font(.caption2.weight(.bold))
                 .foregroundColor(.white)
                 .frame(width: 18, height: 18)
-                .background(Circle().fill(Color.blue))
+                .background(Circle().fill(Color.brandBlue))
                 .position(x: 14, y: 68)
         }
     }
@@ -204,11 +204,11 @@ struct CreateRecordFullView: View {
                 Text("新增")
                     .font(.caption)
             }
-            .foregroundColor(.blue)
+            .foregroundColor(.brandBlue)
             .frame(width: 80, height: 80)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.blue, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .strokeBorder(Color.brandBlue, style: StrokeStyle(lineWidth: 2, dash: [6]))
             )
         }
     }
@@ -267,7 +267,7 @@ struct CreateRecordFullView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(viewModel.canSubmit ? Color.blue : Color.gray)
+                .background(viewModel.canSubmit ? Color.brandBlue : Color.gray)
                 .cornerRadius(12)
             }
             .disabled(!viewModel.canSubmit)

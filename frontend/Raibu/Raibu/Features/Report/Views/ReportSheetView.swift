@@ -188,7 +188,7 @@ struct ReportSheetView: View {
             
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 72))
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.brandOrange)
             
             Text("您已經檢舉過此內容")
                 .font(.title2)

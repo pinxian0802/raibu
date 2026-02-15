@@ -136,7 +136,7 @@ final class MapIconFactory {
             context.cgContext.fillEllipse(in: badgeRect)
             
             let innerBadgeRect = badgeRect.insetBy(dx: 2, dy: 2)
-            UIColor.systemBlue.setFill()
+            UIColor.brandBlue.setFill()
             context.cgContext.fillEllipse(in: innerBadgeRect)
             
             // Badge 數字
@@ -168,7 +168,7 @@ final class MapIconFactory {
             UIColor.white.setFill()
             context.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
             
-            UIColor.orange.setFill()
+            UIColor.brandOrange.setFill()
             context.cgContext.fillEllipse(in: CGRect(
                 x: borderWidth,
                 y: borderWidth,
@@ -202,7 +202,7 @@ final class MapIconFactory {
             UIColor.white.setFill()
             context.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
             
-            let color = mode == .record ? UIColor.systemBlue : UIColor.orange
+            let color = mode == .record ? UIColor.brandBlue : UIColor.brandOrange
             color.setFill()
             context.cgContext.fillEllipse(in: CGRect(
                 x: borderWidth,

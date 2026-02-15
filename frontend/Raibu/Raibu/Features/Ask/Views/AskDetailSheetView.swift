@@ -150,7 +150,7 @@ struct AskDetailSheetView: View {
             // 範圍資訊
             HStack(spacing: 8) {
                 Image(systemName: "scope")
-                    .foregroundColor(.orange)
+                    .foregroundColor(.brandOrange)
                 Text("詢問範圍：\(ask.radiusMeters)m")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -167,7 +167,7 @@ struct AskDetailSheetView: View {
                 } label: {
                     Label("在地圖上查看", systemImage: "map")
                         .font(.caption.weight(.medium))
-                        .foregroundColor(.orange)
+                        .foregroundColor(.brandOrange)
                 }
 
                 if ask.status == .resolved {
@@ -300,7 +300,7 @@ struct AskDetailSheetView: View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
-                .foregroundColor(.orange)
+                .foregroundColor(.brandOrange)
 
             Text(message)
                 .font(.subheadline)

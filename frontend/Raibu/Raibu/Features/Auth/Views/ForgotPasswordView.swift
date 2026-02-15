@@ -22,12 +22,12 @@ struct ForgotPasswordView: View {
                 // Icon
                 ZStack {
                     Circle()
-                        .fill(Color.orange.opacity(0.1))
+                        .fill(Color.brandOrange.opacity(0.1))
                         .frame(width: 100, height: 100)
                     
                     Image(systemName: "key.fill")
                         .font(.system(size: 45))
-                        .foregroundColor(.orange)
+                        .foregroundColor(.brandOrange)
                 }
                 
                 // Title
@@ -68,7 +68,7 @@ struct ForgotPasswordView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(!email.isEmpty ? Color.orange : Color.gray)
+                    .background(!email.isEmpty ? Color.brandOrange : Color.gray)
                     .foregroundColor(.white)
                     .cornerRadius(10)
                     .disabled(isLoading || email.isEmpty)

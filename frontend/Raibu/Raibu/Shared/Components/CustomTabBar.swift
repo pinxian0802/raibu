@@ -95,11 +95,11 @@ private struct TabBarButton: View {
             VStack(spacing: 2) {
                 Image(systemName: isSelected ? iconFilled : icon)
                     .font(.system(size: 20))
-                    .foregroundColor(isSelected ? .blue : .gray)
+                    .foregroundColor(isSelected ? .brandBlue : .gray)
                 
                 Text(title)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(isSelected ? .blue : .gray)
+                    .foregroundColor(isSelected ? .brandBlue : .gray)
             }
             .frame(maxWidth: .infinity)
             .scaleEffect(isPressed ? 0.92 : 1.0)

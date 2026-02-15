@@ -359,11 +359,11 @@ struct RecordDetailSheetView: View {
                         if viewModel.isSubmittingReply {
                             ProgressView()
                                 .controlSize(.small)
-                                .tint(.blue)
+                                .tint(.brandBlue)
                         } else {
                             Image(systemName: "paperplane.fill")
                                 .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .foregroundColor(.blue)
+                                .foregroundColor(.brandBlue)
                         }
                     }
                     .buttonStyle(.plain)

@@ -109,7 +109,7 @@ struct CreateAskFullView: View {
                 MapAnnotation(coordinate: pin.coordinate) {
                     Image(systemName: "questionmark.circle.fill")
                         .font(.title)
-                        .foregroundColor(.orange)
+                        .foregroundColor(.brandOrange)
                 }
             }
             .frame(height: 200)
@@ -118,8 +118,8 @@ struct CreateAskFullView: View {
             
             // 範圍圓圈
             Circle()
-                .stroke(Color.orange.opacity(0.5), lineWidth: 2)
-                .background(Circle().fill(Color.orange.opacity(0.1)))
+                .stroke(Color.brandOrange.opacity(0.5), lineWidth: 2)
+                .background(Circle().fill(Color.brandOrange.opacity(0.1)))
                 .frame(width: 100, height: 100)
         }
         .padding(.horizontal)
@@ -137,7 +137,7 @@ struct CreateAskFullView: View {
                 
                 Text(viewModel.radiusText)
                     .font(.subheadline)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.brandOrange)
                     .fontWeight(.medium)
             }
             .padding(.horizontal)
@@ -156,7 +156,7 @@ struct CreateAskFullView: View {
                             .padding(.vertical, 8)
                             .background(
                                 viewModel.radiusMeters == radius ?
-                                Color.orange : Color(.systemGray6)
+                                Color.brandOrange : Color(.systemGray6)
                             )
                             .foregroundColor(
                                 viewModel.radiusMeters == radius ?
@@ -226,7 +226,7 @@ struct CreateAskFullView: View {
                         Text("新增照片")
                     }
                     .font(.subheadline)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.brandBlue)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity)
                     .background(Color(.systemGray6))
@@ -269,11 +269,11 @@ struct CreateAskFullView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.title3)
-                            .foregroundColor(.blue)
+                            .foregroundColor(.brandBlue)
                             .frame(width: 70, height: 70)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(Color.blue, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                                    .strokeBorder(Color.brandBlue, style: StrokeStyle(lineWidth: 2, dash: [6]))
                             )
                     }
                 }
@@ -308,7 +308,7 @@ struct CreateAskFullView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(viewModel.canSubmit ? Color.orange : Color.gray)
+                .background(viewModel.canSubmit ? Color.brandOrange : Color.gray)
                 .cornerRadius(12)
             }
             .disabled(!viewModel.canSubmit)

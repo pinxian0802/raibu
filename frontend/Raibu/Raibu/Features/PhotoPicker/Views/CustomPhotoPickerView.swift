@@ -209,7 +209,7 @@ struct CustomPhotoPickerView: View {
             
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.orange)
+                    .foregroundColor(.brandOrange)
                 Text("已達 \(viewModel.maxSelection) 張上限")
             }
             .padding(.horizontal, 20)
@@ -296,7 +296,7 @@ struct PhotoCellView: View {
     private func selectionBadge(number: Int) -> some View {
         ZStack {
             Circle()
-                .fill(Color.blue)
+                .fill(Color.brandBlue)
                 .frame(width: 26, height: 26)
             
             Text("\(number)")

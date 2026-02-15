@@ -449,7 +449,7 @@ struct ProfileFullView: View {
                 Rectangle()
                     .fill(
                         LinearGradient(
-                            colors: [Color.orange.opacity(0.3), Color.orange.opacity(0.1)],
+                            colors: [Color.brandOrange.opacity(0.3), Color.brandOrange.opacity(0.1)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -462,7 +462,7 @@ struct ProfileFullView: View {
                         Spacer()
                         Image(systemName: "questionmark")
                             .font(.system(size: 30, weight: .bold))
-                            .foregroundColor(.orange)
+                            .foregroundColor(.brandOrange)
                         Spacer()
                     }
                     Spacer()

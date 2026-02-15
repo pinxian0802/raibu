@@ -117,7 +117,7 @@ struct HorizontalImageEditor: View {
                 .font(.caption2.weight(.bold))
                 .foregroundColor(.white)
                 .frame(width: 20, height: 20)
-                .background(Circle().fill(Color.blue))
+                .background(Circle().fill(Color.brandBlue))
                 .position(x: 16, y: 70)
         }
     }
@@ -170,11 +170,11 @@ struct HorizontalImageEditor: View {
                 Text("新增")
                     .font(.caption)
             }
-            .foregroundColor(.blue)
+            .foregroundColor(.brandBlue)
             .frame(width: 80, height: 80)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.blue, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .strokeBorder(Color.brandBlue, style: StrokeStyle(lineWidth: 2, dash: [6]))
             )
         }
     }

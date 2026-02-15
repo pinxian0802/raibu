@@ -48,7 +48,7 @@ struct RegisterView: View {
                     VStack(spacing: 8) {
                         Image(systemName: "person.badge.plus")
                             .font(.system(size: 60))
-                            .foregroundColor(.blue)
+                            .foregroundColor(.brandBlue)
                         
                         Text("建立帳號")
                             .font(.title)
@@ -87,7 +87,7 @@ struct RegisterView: View {
                             if !email.isEmpty && !isValidEmail {
                                 Text("請輸入有效的電子郵件地址")
                                     .font(.caption)
-                                    .foregroundColor(.orange)
+                                    .foregroundColor(.brandOrange)
                             }
                         }
                         
@@ -134,7 +134,7 @@ struct RegisterView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(isFormValid ? Color.blue : Color.gray)
+                        .background(isFormValid ? Color.brandBlue : Color.gray)
                         .foregroundColor(.white)
                         .cornerRadius(10)
                         .disabled(!isFormValid || isLoading)

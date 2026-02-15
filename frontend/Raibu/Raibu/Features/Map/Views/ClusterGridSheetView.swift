@@ -178,12 +178,12 @@ struct ClusterGridSheetView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(Color.orange.opacity(0.2))
+                        .fill(Color.brandOrange.opacity(0.2))
                         .frame(width: 50, height: 50)
                     
                     Image(systemName: "questionmark")
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.orange)
+                        .foregroundColor(.brandOrange)
                 }
                 
                 VStack(alignment: .leading, spacing: 4) {
@@ -431,7 +431,7 @@ struct RecordDetailContentView: View {
                     Text("新增回覆")
                 }
                 .font(.subheadline)
-                .foregroundColor(.blue)
+                .foregroundColor(.brandBlue)
                 .padding(.vertical, 8)
             }
         }

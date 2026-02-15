@@ -83,7 +83,7 @@ struct ProfileSetupView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(avatarImage != nil ? Color.blue : Color.gray)
+                .background(avatarImage != nil ? Color.brandBlue : Color.gray)
                 .foregroundColor(.white)
                 .cornerRadius(12)
                 .disabled(avatarImage == nil || isUploading)

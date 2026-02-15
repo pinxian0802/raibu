@@ -109,7 +109,7 @@ struct ReplyCreateView: View {
                         Text("新增照片")
                     }
                     .font(.subheadline)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.brandBlue)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity)
                     .background(Color(.systemGray6))
@@ -144,11 +144,11 @@ struct ReplyCreateView: View {
                                 showPhotoPicker = true
                             } label: {
                                 Image(systemName: "plus")
-                                    .foregroundColor(.blue)
+                                    .foregroundColor(.brandBlue)
                                     .frame(width: 60, height: 60)
                                     .background(
                                         RoundedRectangle(cornerRadius: 8)
-                                            .strokeBorder(Color.blue, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                                            .strokeBorder(Color.brandBlue, style: StrokeStyle(lineWidth: 2, dash: [6]))
                                     )
                             }
                         }
@@ -179,7 +179,7 @@ struct ReplyCreateView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(canSubmit ? Color.blue : Color.gray)
+                .background(canSubmit ? Color.brandBlue : Color.gray)
                 .cornerRadius(12)
             }
             .disabled(!canSubmit)

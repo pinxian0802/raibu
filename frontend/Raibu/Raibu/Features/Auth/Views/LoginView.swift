@@ -35,7 +35,7 @@ struct LoginView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "map.circle.fill")
                         .font(.system(size: 80))
-                        .foregroundColor(.blue)
+                        .foregroundColor(.brandBlue)
 
                     Text("Raibu")
                         .font(.largeTitle)
@@ -61,7 +61,7 @@ struct LoginView: View {
                         if !email.isEmpty && !isValidEmail {
                             Text("請輸入有效的電子郵件地址")
                                 .font(.caption)
-                                .foregroundColor(.orange)
+                                .foregroundColor(.brandOrange)
                         }
                     }
 
@@ -76,7 +76,7 @@ struct LoginView: View {
                             showForgotPassword = true
                         }
                         .font(.caption)
-                        .foregroundColor(.blue)
+                        .foregroundColor(.brandBlue)
                     }
 
                     if let error = errorMessage {
@@ -97,7 +97,7 @@ struct LoginView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(canSubmit ? Color.blue : Color.gray)
+                    .background(canSubmit ? Color.brandBlue : Color.gray)
                     .foregroundColor(.white)
                     .cornerRadius(10)
                     .disabled(isLoading || !canSubmit)

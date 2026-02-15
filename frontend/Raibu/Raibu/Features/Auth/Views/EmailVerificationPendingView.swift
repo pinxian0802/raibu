@@ -45,12 +45,12 @@ struct EmailVerificationPendingView: View {
             // Icon
             ZStack {
                 Circle()
-                    .fill(Color.blue.opacity(0.1))
+                    .fill(Color.brandBlue.opacity(0.1))
                     .frame(width: 100, height: 100)
                 
                 Image(systemName: "envelope.badge.shield.half.filled")
                     .font(.system(size: 45))
-                    .foregroundColor(.blue)
+                    .foregroundColor(.brandBlue)
             }
             
             // Title
@@ -65,7 +65,7 @@ struct EmailVerificationPendingView: View {
                 
                 Text(email)
                     .fontWeight(.semibold)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.brandBlue)
                     .font(.subheadline)
             }
             
@@ -107,7 +107,7 @@ struct EmailVerificationPendingView: View {
                 if otpAttempts > 0 && !isLocked {
                     Text("剩餘嘗試次數：\(maxAttempts - otpAttempts)")
                         .font(.caption)
-                        .foregroundColor(.orange)
+                        .foregroundColor(.brandOrange)
                 }
                 
                 // 鎖定倒計時
@@ -132,7 +132,7 @@ struct EmailVerificationPendingView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(canVerify ? Color.blue : Color.gray)
+                .background(canVerify ? Color.brandBlue : Color.gray)
                 .foregroundColor(.white)
                 .cornerRadius(10)
                 .disabled(!canVerify)

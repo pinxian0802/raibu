@@ -28,8 +28,8 @@ enum ToastType {
         switch self {
         case .success: return .green
         case .error: return .red
-        case .info: return .blue
-        case .warning: return .orange
+        case .info: return .brandBlue
+        case .warning: return .brandOrange
         }
     }
 }
