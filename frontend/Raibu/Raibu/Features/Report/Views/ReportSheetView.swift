@@ -20,43 +20,47 @@ struct ReportSheetView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if viewModel.hasReported && !viewModel.showSuccess {
-                    // 已經檢舉過
-                    alreadyReportedView
-                } else if viewModel.showSuccess {
-                    // 檢舉成功
-                    successView
-                } else {
-                    // 檢舉表單
-                    reportFormView
-                }
-            }
-            .navigationTitle("檢舉內容")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
-                        dismiss()
+        VStack(spacing: 0) {
+            SheetTopHandle()
+
+            NavigationStack {
+                VStack(spacing: 0) {
+                    if viewModel.hasReported && !viewModel.showSuccess {
+                        // 已經檢舉過
+                        alreadyReportedView
+                    } else if viewModel.showSuccess {
+                        // 檢舉成功
+                        successView
+                    } else {
+                        // 檢舉表單
+                        reportFormView
                     }
                 }
-                
-                if !viewModel.hasReported && !viewModel.showSuccess {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("提交") {
-                            Task {
-                                await viewModel.submitReport()
-                            }
+                .navigationTitle("檢舉內容")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") {
+                            dismiss()
                         }
-                        .disabled(!viewModel.canSubmit)
-                        .fontWeight(.semibold)
+                    }
+                    
+                    if !viewModel.hasReported && !viewModel.showSuccess {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("提交") {
+                                Task {
+                                    await viewModel.submitReport()
+                                }
+                            }
+                            .disabled(!viewModel.canSubmit)
+                            .fontWeight(.semibold)
+                        }
                     }
                 }
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .task {
             await viewModel.checkIfReported()
         }
@@ -174,7 +178,7 @@ struct ReportSheetView: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(Color.accentColor)
+                    .background(Color.appPrimary)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .padding(.horizontal)
@@ -209,7 +213,7 @@ struct ReportSheetView: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(Color.accentColor)
+                    .background(Color.appPrimary)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .padding(.horizontal)
@@ -230,7 +234,7 @@ private struct CategoryRow: View {
             HStack(spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .foregroundStyle(isSelected ? Color.appPrimary : .secondary)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(category.displayName)

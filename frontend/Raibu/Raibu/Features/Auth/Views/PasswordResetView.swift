@@ -159,7 +159,7 @@ struct PasswordResetView: View {
             if let error = errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(.appDanger)
                     .multilineTextAlignment(.center)
             }
             
@@ -174,7 +174,7 @@ struct PasswordResetView: View {
             if isLocked {
                 Text("請等待 \(remainingLockSeconds) 秒後再試")
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(.appDanger)
             }
             
             Button(action: verifyOTP) {
@@ -191,8 +191,8 @@ struct PasswordResetView: View {
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(canVerifyOTP ? Color.brandBlue : Color.gray)
-            .foregroundColor(.white)
+            .background(canVerifyOTP ? Color.brandBlue : Color.appDisabled)
+            .foregroundColor(.appOnPrimary)
             .cornerRadius(10)
             .disabled(!canVerifyOTP)
         }
@@ -218,14 +218,14 @@ struct PasswordResetView: View {
                 if passwordMismatch {
                     Text("密碼不一致")
                         .font(.caption)
-                        .foregroundColor(.red)
+                        .foregroundColor(.appDanger)
                 }
             }
             
             if let error = errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(.appDanger)
                     .multilineTextAlignment(.center)
             }
             
@@ -240,8 +240,8 @@ struct PasswordResetView: View {
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(isPasswordValid ? Color.brandOrange : Color.gray)
-            .foregroundColor(.white)
+            .background(isPasswordValid ? Color.brandOrange : Color.appDisabled)
+            .foregroundColor(.appOnPrimary)
             .cornerRadius(10)
             .disabled(!isPasswordValid || isLoading)
         }
@@ -259,8 +259,8 @@ struct PasswordResetView: View {
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.green)
-                    .foregroundColor(.white)
+                    .background(Color.appSuccess)
+                    .foregroundColor(.appOnPrimary)
                     .cornerRadius(10)
             }
         }
@@ -318,9 +318,9 @@ struct PasswordResetView: View {
     
     private var iconBackgroundColor: Color {
         if isResetComplete {
-            return Color.green.opacity(0.1)
+            return Color.appSuccess.opacity(0.1)
         } else if isOTPVerified {
-            return Color.green.opacity(0.1)
+            return Color.appSuccess.opacity(0.1)
         } else {
             return Color.brandOrange.opacity(0.1)
         }

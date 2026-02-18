@@ -396,10 +396,10 @@ struct OtherUserProfileContentView: View {
                     Text("\(record.likeCount)")
                         .font(.caption2.weight(.medium))
                 }
-                .foregroundColor(.white)
+                .foregroundColor(.appOnPrimary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(Color.black.opacity(0.5))
+                .background(Color.appOverlay.opacity(0.5))
                 .cornerRadius(4)
                 .padding(6)
             }
@@ -440,10 +440,10 @@ struct OtherUserProfileContentView: View {
                     Text("\(ask.likeCount)")
                         .font(.caption2.weight(.medium))
                 }
-                .foregroundColor(.white)
+                .foregroundColor(.appOnPrimary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(Color.black.opacity(0.5))
+                .background(Color.appOverlay.opacity(0.5))
                 .cornerRadius(4)
                 .padding(6)
             }

@@ -113,7 +113,7 @@ struct MapSearchBar: View {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(
-            color: Color.black.opacity(0.2),
+            color: Color.appOverlay.opacity(0.2),
             radius: 8,
             x: 0,
             y: 2
@@ -162,7 +162,7 @@ struct MapSearchBar: View {
         }
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 2)
+        .shadow(color: Color.appOverlay.opacity(0.15), radius: 8, x: 0, y: 2)
     }
 
     // MARK: - Suggestion Row
@@ -273,7 +273,7 @@ struct MapSearchBar: View {
 
 #Preview {
     ZStack {
-        Color.gray.opacity(0.3)
+        Color.appDisabled.opacity(0.3)
             .ignoresSafeArea()
 
         VStack {

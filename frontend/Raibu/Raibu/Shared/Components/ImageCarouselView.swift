@@ -130,12 +130,12 @@ struct ImageCarouselView: View {
                 Text("查看位置")
                     .font(.caption.weight(.medium))
             }
-            .foregroundColor(.white)
+            .foregroundColor(.appOnPrimary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
                 Capsule()
-                    .fill(Color.black.opacity(0.6))
+                    .fill(Color.appOverlay.opacity(0.6))
             )
         }
     }

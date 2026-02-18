@@ -11,25 +11,6 @@ import UIKit
 import Combine
 import CoreLocation
 
-/// 時間範圍選項
-enum DateRangeOption: String, CaseIterable {
-    case oneWeek = "7 天"
-    case twoWeeks = "14 天"
-    case oneMonth = "30 天"
-    
-    var days: Int {
-        switch self {
-        case .oneWeek: return 7
-        case .twoWeeks: return 14
-        case .oneMonth: return 30
-        }
-    }
-    
-    var startDate: Date {
-        Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-    }
-}
-
 /// 相簿選擇器服務
 class PhotoPickerService: ObservableObject {
     @Published var authorizationStatus: PHAuthorizationStatus = .notDetermined
@@ -48,15 +29,15 @@ class PhotoPickerService: ObservableObject {
     /// 取得篩選後的照片
     /// - Parameters:
     ///   - requireGPS: 是否要求 GPS（紀錄模式為 true）
-    ///   - dateRange: 時間範圍
+    ///   - startDate: 起始日期（含）
+    ///   - endDate: 結束日期（含當日）
     /// - Returns: 符合條件的 PHAsset 陣列
-    func fetchPhotos(requireGPS: Bool, dateRange: DateRangeOption = .oneWeek) async -> [PHAsset] {
+    func fetchPhotos(requireGPS: Bool, startDate: Date? = nil, endDate: Date? = nil) async -> [PHAsset] {
         let fetchOptions = PHFetchOptions()
         fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         
         // 時間篩選
-        let startDate = dateRange.startDate
-        fetchOptions.predicate = NSPredicate(format: "creationDate >= %@", startDate as CVarArg)
+        fetchOptions.predicate = datePredicate(startDate: startDate, endDate: endDate)
         
         let allPhotos = PHAsset.fetchAssets(with: .image, options: fetchOptions)
         
@@ -72,6 +53,43 @@ class PhotoPickerService: ObservableObject {
         }
         
         return filtered
+    }
+
+    /// 依 localIdentifier 取得指定照片（維持傳入順序）
+    func fetchAssets(localIdentifiers: [String]) async -> [PHAsset] {
+        guard !localIdentifiers.isEmpty else { return [] }
+
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIdentifiers, options: nil)
+        var assetMap: [String: PHAsset] = [:]
+
+        fetchResult.enumerateObjects { asset, _, _ in
+            assetMap[asset.localIdentifier] = asset
+        }
+
+        return localIdentifiers.compactMap { assetMap[$0] }
+    }
+
+    // MARK: - Private Helpers
+
+    private func datePredicate(startDate: Date?, endDate: Date?) -> NSPredicate? {
+        let calendar = Calendar.current
+        var predicates: [NSPredicate] = []
+
+        if let startDate {
+            let normalizedStart = calendar.startOfDay(for: startDate)
+            predicates.append(NSPredicate(format: "creationDate >= %@", normalizedStart as CVarArg))
+        }
+
+        if let endDate {
+            let normalizedEnd = calendar.startOfDay(for: endDate)
+            if let nextDay = calendar.date(byAdding: .day, value: 1, to: normalizedEnd) {
+                predicates.append(NSPredicate(format: "creationDate < %@", nextDay as CVarArg))
+            }
+        }
+
+        guard !predicates.isEmpty else { return nil }
+        if predicates.count == 1 { return predicates[0] }
+        return NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
     }
     
     /// 載入照片完整資料

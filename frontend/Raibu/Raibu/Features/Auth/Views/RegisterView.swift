@@ -110,14 +110,14 @@ struct RegisterView: View {
                             if passwordMismatch {
                                 Text("密碼不一致")
                                     .font(.caption)
-                                    .foregroundColor(.red)
+                                    .foregroundColor(.appDanger)
                             }
                         }
                         
                         if let error = errorMessage {
                             Text(error)
                                 .font(.caption)
-                                .foregroundColor(.red)
+                                .foregroundColor(.appDanger)
                                 .multilineTextAlignment(.center)
                                 .padding(.top, 4)
                         }
@@ -134,8 +134,8 @@ struct RegisterView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(isFormValid ? Color.brandBlue : Color.gray)
-                        .foregroundColor(.white)
+                        .background(isFormValid ? Color.brandBlue : Color.appDisabled)
+                        .foregroundColor(.appOnPrimary)
                         .cornerRadius(10)
                         .disabled(!isFormValid || isLoading)
                         .padding(.top, 8)

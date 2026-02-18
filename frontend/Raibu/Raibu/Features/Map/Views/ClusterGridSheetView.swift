@@ -51,14 +51,19 @@ struct ClusterGridSheetView: View {
     }
     
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            gridContent
-                .navigationTitle("標點列表")
-                .navigationBarTitleDisplayMode(.inline)
-                .navigationDestination(for: ClusterDetailDestination.self) { destination in
-                    detailView(for: destination)
-                }
+        VStack(spacing: 0) {
+            SheetTopHandle()
+
+            NavigationStack(path: $navigationPath) {
+                gridContent
+                    .navigationTitle("標點列表")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .navigationDestination(for: ClusterDetailDestination.self) { destination in
+                        detailView(for: destination)
+                    }
+            }
         }
+        .presentationDragIndicator(.hidden)
     }
     
     // MARK: - Grid Content

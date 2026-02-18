@@ -188,7 +188,7 @@ struct RecordRowSkeleton: View {
         .padding()
         .background(Color(.systemBackground))
         .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 5)
+        .shadow(color: Color.appOverlay.opacity(0.05), radius: 5)
     }
 }
 
@@ -220,7 +220,7 @@ struct AskRowSkeleton: View {
         .padding()
         .background(Color(.systemBackground))
         .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 5)
+        .shadow(color: Color.appOverlay.opacity(0.05), radius: 5)
     }
 }
 

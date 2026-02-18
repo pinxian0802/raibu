@@ -36,9 +36,9 @@ struct ImageThumbnailView: View {
             .clipShape(Circle())
             .overlay(
                 Circle()
-                    .stroke(Color.white, lineWidth: borderWidth)
+                    .stroke(Color.appOnPrimary, lineWidth: borderWidth)
             )
-            .shadow(color: Color.black.opacity(0.25), radius: 3, x: 0, y: 2)
+            .shadow(color: Color.appOverlay.opacity(0.25), radius: 3, x: 0, y: 2)
     }
 }
 

@@ -248,7 +248,7 @@ struct MapContentView: View {
                         .padding(.vertical, 8)
                         .background(hideMarkers ? Color.brandBlue : Color(.systemBackground))
                         .clipShape(Capsule())
-                        .shadow(color: Color.black.opacity(0.1), radius: 3)
+                        .shadow(color: Color.appOverlay.opacity(0.1), radius: 3)
                     }
                     Spacer()
                 }
@@ -285,7 +285,7 @@ struct MapContentView: View {
                             .frame(width: 44, height: 44)
                             .background(Color(.systemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 2)
+                            .shadow(color: Color.appOverlay.opacity(0.2), radius: 8, x: 0, y: 2)
                     }
                     .buttonStyle(ScaleButtonStyle())
                 }
@@ -346,7 +346,7 @@ struct MapContentView: View {
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color(.systemBackground))
-                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
+                .shadow(color: Color.appOverlay.opacity(0.12), radius: 10, x: 0, y: 4)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -387,7 +387,7 @@ struct MapContentView: View {
                 // 圖標（帶 3D 翻轉效果）
                 Image(systemName: viewModel.currentMode.iconName)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.appOnPrimary)
                     .rotation3DEffect(
                         .degrees(viewModel.currentMode == .record ? 0 : 180),
                         axis: (x: 0, y: 1, z: 0)

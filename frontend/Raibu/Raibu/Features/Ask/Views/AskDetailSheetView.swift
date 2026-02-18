@@ -43,11 +43,7 @@ struct AskDetailSheetView: View {
     var body: some View {
         VStack(spacing: 0) {
             // 拖曳指示條
-            Capsule()
-                .fill(Color(.systemGray3))
-                .frame(width: 36, height: 5)
-                .padding(.top, 8)
-                .padding(.bottom, 4 + globalDetailSheetContentTopSpacing)
+            SheetTopHandle(bottomPadding: 14 + globalDetailSheetContentTopSpacing)
 
             NavigationView {
                 ScrollView {
@@ -173,7 +169,7 @@ struct AskDetailSheetView: View {
                 if ask.status == .resolved {
                     Label("已解決", systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.medium))
-                        .foregroundColor(.green)
+                        .foregroundColor(.appSuccess)
                 }
             }
         }
@@ -186,7 +182,7 @@ struct AskDetailSheetView: View {
                         KFImage(URL(string: image.thumbnailPublicUrl ?? ""))
                             .placeholder {
                                 Rectangle()
-                                    .fill(Color.gray.opacity(0.2))
+                                    .fill(Color.appDisabled.opacity(0.2))
                                     .frame(width: 100, height: 100)
                                     .cornerRadius(8)
                             }
@@ -214,7 +210,7 @@ struct AskDetailSheetView: View {
                     KFImage(URL(string: author.avatarUrl ?? ""))
                         .placeholder {
                             Circle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(Color.appDisabled.opacity(0.3))
                                 .frame(width: 40, height: 40)
                         }
                         .retry(maxCount: 2, interval: .seconds(1))

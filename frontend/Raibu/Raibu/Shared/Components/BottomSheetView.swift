@@ -31,7 +31,7 @@ struct BottomSheetView<Content: View>: View {
             ZStack(alignment: .bottom) {
                 // 背景遮罩
                 if isPresented {
-                    Color.black.opacity(0.3)
+                    Color.appOverlay.opacity(0.3)
                         .ignoresSafeArea()
                         .onTapGesture {
                             dismiss()
@@ -52,7 +52,7 @@ struct BottomSheetView<Content: View>: View {
                 .frame(height: height)
                 .background(Color(.systemBackground))
                 .cornerRadius(20, corners: [.topLeft, .topRight])
-                .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: -5)
+                .shadow(color: Color.appOverlay.opacity(0.15), radius: 10, x: 0, y: -5)
                 .offset(y: isPresented ? offset : height)
                 .gesture(dragGesture)
                 .animation(.spring(response: 0.3), value: isPresented)
@@ -137,7 +137,7 @@ struct RoundedCorner: Shape {
         
         var body: some View {
             ZStack {
-                Color.gray.opacity(0.3)
+                Color.appDisabled.opacity(0.3)
                     .ignoresSafeArea()
                 
                 Button("Show Sheet") {

@@ -62,7 +62,7 @@ struct ProfileSetupView: View {
             if let error = errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(.appDanger)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
             }
@@ -83,8 +83,8 @@ struct ProfileSetupView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(avatarImage != nil ? Color.brandBlue : Color.gray)
-                .foregroundColor(.white)
+                .background(avatarImage != nil ? Color.brandBlue : Color.appDisabled)
+                .foregroundColor(.appOnPrimary)
                 .cornerRadius(12)
                 .disabled(avatarImage == nil || isUploading)
                 

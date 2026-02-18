@@ -54,11 +54,7 @@ struct RecordDetailSheetView: View {
     var body: some View {
         VStack(spacing: 0) {
             // 拖曳指示條
-            Capsule()
-                .fill(Color(.systemGray3))
-                .frame(width: 36, height: 5)
-                .padding(.top, 8)
-                .padding(.bottom, 4 + globalDetailSheetContentTopSpacing)
+            SheetTopHandle(bottomPadding: 14 + globalDetailSheetContentTopSpacing)
             
             ZStack {
                 if viewModel.isLoading {
@@ -195,7 +191,7 @@ struct RecordDetailSheetView: View {
                 .lineSpacing(2)
             
             if shouldShowDescriptionToggle(description) {
-                Button(isDescriptionExpanded ? "收起" : "更多") {
+                Button(isDescriptionExpanded ? "收起" : "更多...") {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         isDescriptionExpanded.toggle()
                     }
@@ -374,7 +370,7 @@ struct RecordDetailSheetView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.white)
+        .background(Color.appSurface)
     }
     
     // MARK: - Replies Section
@@ -477,7 +473,7 @@ struct RecordDetailSheetView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.white)
+        .background(Color.appSurface)
     }
     
     private func skeletonBox(
@@ -533,7 +529,7 @@ struct RecordDetailSheetView: View {
     
     private func moreOptionsOverlay(buttonFrame: CGRect) -> some View {
         ZStack(alignment: .topLeading) {
-            Color.black.opacity(0.001)
+            Color.appOverlay.opacity(0.001)
                 .ignoresSafeArea()
                 .onTapGesture {
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -574,13 +570,13 @@ struct RecordDetailSheetView: View {
             }
         }
         .frame(width: 186)
-        .background(Color.white)
+        .background(Color.appSurface)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color(.systemGray5), lineWidth: 0.8)
         )
-        .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 3)
+        .shadow(color: Color.appOverlay.opacity(0.12), radius: 10, x: 0, y: 3)
     }
     
     private var deleteConfirmationOverlay: some View {
@@ -588,7 +584,7 @@ struct RecordDetailSheetView: View {
             let popupWidth = min(max(proxy.size.width - 40, 260), 320)
             
             ZStack {
-                Color.black.opacity(0.18)
+                Color.appOverlay.opacity(0.18)
                     .ignoresSafeArea()
                     .onTapGesture {
                         withAnimation(.easeInOut(duration: 0.15)) {
@@ -640,7 +636,7 @@ struct RecordDetailSheetView: View {
                         } label: {
                             Text("刪除")
                                 .font(.system(size: 18, weight: .semibold, design: .rounded))
-                                .foregroundColor(.red)
+                                .foregroundColor(.appDanger)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .contentShape(Rectangle())
                         }
@@ -649,13 +645,13 @@ struct RecordDetailSheetView: View {
                     .frame(height: 54)
                 }
                 .frame(width: popupWidth)
-                .background(Color.white)
+                .background(Color.appSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(Color(.systemGray5), lineWidth: 0.8)
                 )
-                .shadow(color: Color.black.opacity(0.15), radius: 14, x: 0, y: 5)
+                .shadow(color: Color.appOverlay.opacity(0.15), radius: 14, x: 0, y: 5)
                 .padding(.horizontal, 20)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -681,13 +677,13 @@ struct RecordDetailSheetView: View {
             HStack(spacing: 12) {
                 Text(title)
                     .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .foregroundStyle(role == .destructive ? Color.red : Color.primary)
+                    .foregroundStyle(role == .destructive ? Color.appDanger : Color.primary)
                 
                 Spacer()
                 
                 Image(systemName: systemImage)
                     .font(.system(size: 20, weight: .regular))
-                    .foregroundStyle(role == .destructive ? Color.red : Color.primary)
+                    .foregroundStyle(role == .destructive ? Color.appDanger : Color.primary)
             }
             .padding(.horizontal, 14)
             .frame(height: 48)
@@ -843,7 +839,7 @@ struct ReplyRowView: View {
                     .overlay(
                         Image(systemName: "person.fill")
                             .font(.system(size: 14))
-                            .foregroundColor(.white)
+                            .foregroundColor(.appOnPrimary)
                     )
             }
         }

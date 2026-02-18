@@ -24,67 +24,73 @@ struct ReplyCreateView: View {
     @State private var showErrorAlert = false
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // 文字輸入
-                        TextEditor(text: $content)
-                            .frame(minHeight: 120)
-                            .padding(8)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                            .overlay(
-                                Group {
-                                    if content.isEmpty {
-                                        Text("分享你的看法...")
-                                            .foregroundColor(.secondary)
-                                            .padding(.leading, 12)
-                                            .padding(.top, 16)
-                                    }
-                                },
-                                alignment: .topLeading
-                            )
-                        
-                        // 照片區
-                        photoSection
+        VStack(spacing: 0) {
+            SheetTopHandle()
+
+            NavigationView {
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            // 文字輸入
+                            TextEditor(text: $content)
+                                .frame(minHeight: 120)
+                                .padding(8)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                                .overlay(
+                                    Group {
+                                        if content.isEmpty {
+                                            Text("分享你的看法...")
+                                                .foregroundColor(.secondary)
+                                                .padding(.leading, 12)
+                                                .padding(.top, 16)
+                                        }
+                                    },
+                                    alignment: .topLeading
+                                )
+                            
+                            // 照片區
+                            photoSection
+                        }
+                        .padding()
                     }
-                    .padding()
+                    
+                    // 提交按鈕
+                    submitButton
                 }
-                
-                // 提交按鈕
-                submitButton
-            }
-            .navigationTitle("新增回覆")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("取消") {
-                        dismiss()
+                .navigationTitle("新增回覆")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("取消") {
+                            dismiss()
+                        }
+                        .disabled(isSubmitting)
                     }
-                    .disabled(isSubmitting)
                 }
-            }
-            .sheet(isPresented: $showPhotoPicker) {
-                CustomPhotoPickerView(
-                    photoPickerService: container.photoPickerService,
-                    requireGPS: false,
-                    maxSelection: 5
-                ) { photos in
-                    selectedPhotos = photos
+                .sheet(isPresented: $showPhotoPicker) {
+                    CustomPhotoPickerView(
+                        photoPickerService: container.photoPickerService,
+                        requireGPS: false,
+                        maxSelection: 5,
+                        initialSelectedPhotos: selectedPhotos
+                    ) { photos in
+                        selectedPhotos = photos
+                    }
                 }
-            }
-            .alert("錯誤", isPresented: $showErrorAlert) {
-                Button("確定") {
-                    errorMessage = nil
+                .alert("錯誤", isPresented: $showErrorAlert) {
+                    Button("確定") {
+                        errorMessage = nil
+                    }
+                } message: {
+                    Text(errorMessage ?? "")
                 }
-            } message: {
-                Text(errorMessage ?? "")
-            }
-            .onChange(of: errorMessage) { newValue in
-                showErrorAlert = newValue != nil
+                .onChange(of: errorMessage) { newValue in
+                    showErrorAlert = newValue != nil
+                }
             }
         }
+        .presentationDragIndicator(.hidden)
     }
     
     // MARK: - Photo Section
@@ -132,8 +138,8 @@ struct ReplyCreateView: View {
                                     }
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.white)
-                                        .background(Circle().fill(Color.black.opacity(0.5)))
+                                        .foregroundColor(.appOnPrimary)
+                                        .background(Circle().fill(Color.appOverlay.opacity(0.5)))
                                 }
                                 .offset(x: 6, y: -6)
                             }
@@ -176,10 +182,10 @@ struct ReplyCreateView: View {
                     }
                 }
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(.appOnPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(canSubmit ? Color.brandBlue : Color.gray)
+                .background(canSubmit ? Color.brandBlue : Color.appDisabled)
                 .cornerRadius(12)
             }
             .disabled(!canSubmit)

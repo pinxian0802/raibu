@@ -20,7 +20,7 @@ struct ShimmerModifier: ViewModifier {
                     LinearGradient(
                         colors: [
                             .clear,
-                            Color.white.opacity(0.4),
+                            Color.appOnPrimary.opacity(0.4),
                             .clear
                         ],
                         startPoint: .leading,

@@ -30,69 +30,75 @@ struct CreateAskFullView: View {
     }
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // 地圖預覽
-                        mapPreview
-                        
-                        // 範圍選擇
-                        radiusSection
-                        
-                        Divider()
-                            .padding(.horizontal)
-                        
-                        // 問題輸入
-                        questionSection
-                        
-                        Divider()
-                            .padding(.horizontal)
-                        
-                        // 照片（選填）
-                        photoSection
+        VStack(spacing: 0) {
+            SheetTopHandle()
+
+            NavigationView {
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            // 地圖預覽
+                            mapPreview
+                            
+                            // 範圍選擇
+                            radiusSection
+                            
+                            Divider()
+                                .padding(.horizontal)
+                            
+                            // 問題輸入
+                            questionSection
+                            
+                            Divider()
+                                .padding(.horizontal)
+                            
+                            // 照片（選填）
+                            photoSection
+                        }
+                        .padding(.vertical, 16)
                     }
-                    .padding(.vertical, 16)
+                    
+                    // 提交按鈕
+                    submitButton
                 }
-                
-                // 提交按鈕
-                submitButton
-            }
-            .navigationTitle("新增詢問")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("取消") {
+                .navigationTitle("新增詢問")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("取消") {
+                            dismiss()
+                        }
+                        .disabled(viewModel.isUploading)
+                    }
+                }
+                .sheet(isPresented: $showPhotoPicker) {
+                    CustomPhotoPickerView(
+                        photoPickerService: container.photoPickerService,
+                        requireGPS: false,
+                        maxSelection: 5,
+                        initialSelectedPhotos: viewModel.selectedPhotos
+                    ) { photos in
+                        viewModel.setPhotos(photos)
+                    }
+                }
+                .alert("錯誤", isPresented: $showErrorAlert) {
+                    Button("確定") {
+                        viewModel.errorMessage = nil
+                    }
+                } message: {
+                    Text(viewModel.errorMessage ?? "")
+                }
+                .onChange(of: viewModel.errorMessage) { newValue in
+                    showErrorAlert = newValue != nil
+                }
+                .onChange(of: viewModel.isCompleted) { completed in
+                    if completed {
                         dismiss()
                     }
-                    .disabled(viewModel.isUploading)
-                }
-            }
-            .sheet(isPresented: $showPhotoPicker) {
-                CustomPhotoPickerView(
-                    photoPickerService: container.photoPickerService,
-                    requireGPS: false,
-                    maxSelection: 5
-                ) { photos in
-                    viewModel.setPhotos(photos)
-                }
-            }
-            .alert("錯誤", isPresented: $showErrorAlert) {
-                Button("確定") {
-                    viewModel.errorMessage = nil
-                }
-            } message: {
-                Text(viewModel.errorMessage ?? "")
-            }
-            .onChange(of: viewModel.errorMessage) { newValue in
-                showErrorAlert = newValue != nil
-            }
-            .onChange(of: viewModel.isCompleted) { completed in
-                if completed {
-                    dismiss()
                 }
             }
         }
+        .presentationDragIndicator(.hidden)
     }
     
     // MARK: - Map Preview
@@ -256,8 +262,8 @@ struct CreateAskFullView: View {
                             }
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.white)
-                                .background(Circle().fill(Color.black.opacity(0.5)))
+                                .foregroundColor(.appOnPrimary)
+                                .background(Circle().fill(Color.appOverlay.opacity(0.5)))
                         }
                         .offset(x: 6, y: -6)
                     }
@@ -305,10 +311,10 @@ struct CreateAskFullView: View {
                     }
                 }
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(.appOnPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(viewModel.canSubmit ? Color.brandOrange : Color.gray)
+                .background(viewModel.canSubmit ? Color.brandOrange : Color.appDisabled)
                 .cornerRadius(12)
             }
             .disabled(!viewModel.canSubmit)

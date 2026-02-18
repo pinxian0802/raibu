@@ -45,14 +45,14 @@ struct AvatarPickerView: View {
                     .overlay(
                         Image(systemName: "camera.fill")
                             .font(.system(size: size * 0.12))
-                            .foregroundColor(.white)
+                            .foregroundColor(.appOnPrimary)
                     )
                     .offset(x: size * 0.35, y: size * 0.35)
                 
                 // Loading overlay
                 if isLoading {
                     Circle()
-                        .fill(Color.black.opacity(0.3))
+                        .fill(Color.appOverlay.opacity(0.3))
                         .frame(width: size, height: size)
                         .overlay(
                             ProgressView()

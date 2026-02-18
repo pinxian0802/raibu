@@ -42,66 +42,71 @@ struct EditAskView: View {
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // 問題
-                    questionSection
-                    
-                    // 現有圖片 (可選)
-                    if viewModel.existingImages.count > 0 {
-                        existingImagesSection
+        VStack(spacing: 0) {
+            SheetTopHandle()
+
+            NavigationView {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // 問題
+                        questionSection
+                        
+                        // 現有圖片 (可選)
+                        if viewModel.existingImages.count > 0 {
+                            existingImagesSection
+                        }
+                        
+                        // 狀態
+                        statusSection
                     }
-                    
-                    // 狀態
-                    statusSection
+                    .padding()
                 }
-                .padding()
-            }
-            .navigationTitle("編輯詢問")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("取消") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("儲存") {
-                        Task {
-                            await viewModel.save()
-                            if viewModel.isCompleted {
-                                onComplete()
-                                dismiss()
-                            }
+                .navigationTitle("編輯詢問")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("取消") {
+                            dismiss()
                         }
                     }
-                    .disabled(!viewModel.canSave || viewModel.isSaving)
+                    
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("儲存") {
+                            Task {
+                                await viewModel.save()
+                                if viewModel.isCompleted {
+                                    onComplete()
+                                    dismiss()
+                                }
+                            }
+                        }
+                        .disabled(!viewModel.canSave || viewModel.isSaving)
+                    }
                 }
-            }
-            .overlay {
-                if viewModel.isSaving {
-                    ProgressView("儲存中...")
-                        .padding()
-                        .background(Color(.systemBackground))
-                        .cornerRadius(12)
-                        .shadow(radius: 10)
+                .overlay {
+                    if viewModel.isSaving {
+                        ProgressView("儲存中...")
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(12)
+                            .shadow(radius: 10)
+                    }
                 }
-            }
-            .alert("錯誤", isPresented: $showErrorAlert) {
-                Button("確定") {
-                    viewModel.errorMessage = nil
+                .alert("錯誤", isPresented: $showErrorAlert) {
+                    Button("確定") {
+                        viewModel.errorMessage = nil
+                    }
+                } message: {
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                    }
                 }
-            } message: {
-                if let error = viewModel.errorMessage {
-                    Text(error)
+                .onChange(of: viewModel.errorMessage) { newValue in
+                    showErrorAlert = newValue != nil
                 }
-            }
-            .onChange(of: viewModel.errorMessage) { newValue in
-                showErrorAlert = newValue != nil
             }
         }
+        .presentationDragIndicator(.hidden)
     }
     
     // MARK: - Question Section
@@ -133,7 +138,7 @@ struct EditAskView: View {
                             KFImage(URL(string: image.thumbnailPublicUrl ?? ""))
                                 .placeholder {
                                     Rectangle()
-                                        .fill(Color.gray.opacity(0.2))
+                                        .fill(Color.appDisabled.opacity(0.2))
                                         .frame(width: 80, height: 80)
                                         .cornerRadius(8)
                                 }
@@ -151,8 +156,8 @@ struct EditAskView: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 18))
-                                    .foregroundColor(.white)
-                                    .background(Circle().fill(Color.black.opacity(0.5)))
+                                    .foregroundColor(.appOnPrimary)
+                                    .background(Circle().fill(Color.appOverlay.opacity(0.5)))
                             }
                             .padding(4)
                         }

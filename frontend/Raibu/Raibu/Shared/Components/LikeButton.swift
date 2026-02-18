@@ -81,7 +81,7 @@ struct LikeButtonLarge: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 25)
-                    .fill(isLiked ? Color.red.opacity(0.1) : Color(.systemGray6))
+                    .fill(isLiked ? Color.appDanger.opacity(0.1) : Color(.systemGray6))
             )
         }
         .buttonStyle(.plain)

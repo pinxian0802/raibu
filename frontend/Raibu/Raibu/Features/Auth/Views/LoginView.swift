@@ -82,7 +82,7 @@ struct LoginView: View {
                     if let error = errorMessage {
                         Text(error)
                             .font(.caption)
-                            .foregroundColor(.red)
+                            .foregroundColor(.appDanger)
                             .multilineTextAlignment(.center)
                     }
 
@@ -97,8 +97,8 @@ struct LoginView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(canSubmit ? Color.brandBlue : Color.gray)
-                    .foregroundColor(.white)
+                    .background(canSubmit ? Color.brandBlue : Color.appDisabled)
+                    .foregroundColor(.appOnPrimary)
                     .cornerRadius(10)
                     .disabled(isLoading || !canSubmit)
                 }

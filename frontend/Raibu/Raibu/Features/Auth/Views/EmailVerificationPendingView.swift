@@ -99,7 +99,7 @@ struct EmailVerificationPendingView: View {
                 if let error = errorMessage {
                     Text(error)
                         .font(.caption)
-                        .foregroundColor(.red)
+                        .foregroundColor(.appDanger)
                         .multilineTextAlignment(.center)
                 }
                 
@@ -114,7 +114,7 @@ struct EmailVerificationPendingView: View {
                 if isLocked {
                     Text("請等待 \(remainingLockSeconds) 秒後再試")
                         .font(.caption)
-                        .foregroundColor(.red)
+                        .foregroundColor(.appDanger)
                 }
                 
                 // Verify Button
@@ -132,8 +132,8 @@ struct EmailVerificationPendingView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(canVerify ? Color.brandBlue : Color.gray)
-                .foregroundColor(.white)
+                .background(canVerify ? Color.brandBlue : Color.appDisabled)
+                .foregroundColor(.appOnPrimary)
                 .cornerRadius(10)
                 .disabled(!canVerify)
             }

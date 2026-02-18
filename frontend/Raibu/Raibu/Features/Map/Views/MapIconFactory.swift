@@ -49,7 +49,7 @@ final class MapIconFactory {
             
             // 繪製白色邊框背景（圓角正方形）
             let borderPath = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
-            UIColor.white.setFill()
+            UIColor.appOnPrimary.setFill()
             borderPath.fill()
             
             // 裁切成圓角正方形並繪製圖片
@@ -92,7 +92,7 @@ final class MapIconFactory {
             
             // 繪製白色邊框背景（圓角正方形）
             let borderPath = UIBezierPath(roundedRect: thumbnailRect, cornerRadius: cornerRadius)
-            UIColor.white.setFill()
+            UIColor.appOnPrimary.setFill()
             borderPath.fill()
             
             // 儲存狀態（用於後續繪製 badge）
@@ -132,7 +132,7 @@ final class MapIconFactory {
             )
             
             // Badge 背景（藍色圓形 + 白色邊框）
-            UIColor.white.setFill()
+            UIColor.appOnPrimary.setFill()
             context.cgContext.fillEllipse(in: badgeRect)
             
             let innerBadgeRect = badgeRect.insetBy(dx: 2, dy: 2)
@@ -144,7 +144,7 @@ final class MapIconFactory {
             let fontSize: CGFloat = count >= 100 ? 10 : (count >= 10 ? 12 : 14)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: UIFont.boldSystemFont(ofSize: fontSize),
-                .foregroundColor: UIColor.white
+                .foregroundColor: UIColor.appOnPrimary
             ]
             let textSize = text.size(withAttributes: attributes)
             let textRect = CGRect(
@@ -165,7 +165,7 @@ final class MapIconFactory {
         let renderer = UIGraphicsImageRenderer(size: size)
         
         return renderer.image { context in
-            UIColor.white.setFill()
+            UIColor.appOnPrimary.setFill()
             context.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
             
             UIColor.brandOrange.setFill()
@@ -199,7 +199,7 @@ final class MapIconFactory {
         let renderer = UIGraphicsImageRenderer(size: size)
         
         return renderer.image { context in
-            UIColor.white.setFill()
+            UIColor.appOnPrimary.setFill()
             context.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
             
             let color = mode == .record ? UIColor.brandBlue : UIColor.brandOrange
@@ -216,7 +216,7 @@ final class MapIconFactory {
             let fontSize: CGFloat = count >= 100 ? 20 : (count >= 10 ? 24 : 28)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: UIFont.boldSystemFont(ofSize: fontSize),
-                .foregroundColor: UIColor.white
+                .foregroundColor: UIColor.appOnPrimary
             ]
             let textSize = text.size(withAttributes: attributes)
             let textRect = CGRect(

@@ -53,7 +53,7 @@ struct ForgotPasswordView: View {
                     if let error = errorMessage {
                         Text(error)
                             .font(.caption)
-                            .foregroundColor(.red)
+                            .foregroundColor(.appDanger)
                             .multilineTextAlignment(.center)
                     }
                     
@@ -68,8 +68,8 @@ struct ForgotPasswordView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(!email.isEmpty ? Color.brandOrange : Color.gray)
-                    .foregroundColor(.white)
+                    .background(!email.isEmpty ? Color.brandOrange : Color.appDisabled)
+                    .foregroundColor(.appOnPrimary)
                     .cornerRadius(10)
                     .disabled(isLoading || email.isEmpty)
                 }

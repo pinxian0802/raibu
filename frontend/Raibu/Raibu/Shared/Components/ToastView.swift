@@ -66,7 +66,7 @@ struct ToastView: View {
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(.systemBackground))
-                .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+                .shadow(color: Color.appOverlay.opacity(0.15), radius: 10, x: 0, y: 5)
         )
         .padding(.horizontal, 20)
     }

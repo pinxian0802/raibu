@@ -69,7 +69,7 @@ struct CustomTabBar: View {
         }
         .background(
             Color(colorScheme == .dark ? UIColor.systemBackground : UIColor.systemBackground)
-                .shadow(color: Color.black.opacity(0.08), radius: 10, y: -3)
+                .shadow(color: Color.appOverlay.opacity(0.08), radius: 10, y: -3)
                 .ignoresSafeArea(edges: .bottom)
         )
     }
@@ -127,5 +127,5 @@ private struct TabBarButton: View {
             onCreateTapped: {}
         )
     }
-    .background(Color.gray.opacity(0.3))
+    .background(Color.appDisabled.opacity(0.3))
 }

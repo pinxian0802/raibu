@@ -103,10 +103,10 @@ struct HorizontalImageEditor: View {
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 22))
-                    .foregroundColor(.white)
+                    .foregroundColor(.appOnPrimary)
                     .background(
                         Circle()
-                            .fill(Color.black.opacity(0.6))
+                            .fill(Color.appOverlay.opacity(0.6))
                             .frame(width: 20, height: 20)
                     )
             }
@@ -115,7 +115,7 @@ struct HorizontalImageEditor: View {
             // 順序編號
             Text("\(index + 1)")
                 .font(.caption2.weight(.bold))
-                .foregroundColor(.white)
+                .foregroundColor(.appOnPrimary)
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(Color.brandBlue))
                 .position(x: 16, y: 70)
