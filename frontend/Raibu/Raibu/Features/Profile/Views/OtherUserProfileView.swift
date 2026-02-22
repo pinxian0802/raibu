@@ -13,6 +13,8 @@ import Kingfisher
 /// 其他用戶個人頁面的內容視圖（不包含 NavigationView 外殼）
 /// 可在既有的 NavigationView 內以 push 方式呈現
 struct OtherUserProfileContentView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.globalDetailSheetContentTopSpacing) private var globalDetailSheetContentTopSpacing
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var container: DIContainer
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
@@ -25,9 +27,15 @@ struct OtherUserProfileContentView: View {
     let showCloseButton: Bool
     
     @State private var selectedTab = 0
+    @State private var resolvedLeadingButtonStyle: LeadingButtonStyle?
     
     /// 外部傳入的 dismiss 閉包（用於 sheet 模式）
     var onDismiss: (() -> Void)?
+
+    private enum LeadingButtonStyle {
+        case close
+        case back
+    }
     
     init(userId: String, userRepository: UserRepository, showCloseButton: Bool = false, onDismiss: (() -> Void)? = nil) {
         self.userId = userId
@@ -40,44 +48,110 @@ struct OtherUserProfileContentView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // 個人資料區塊（頭像 + 名字 + 統計）
-                profileHeader
-                
-                // 標籤切換
-                tabSection
-                
-                // 列表內容
-                listContent
+        BottomSheetScaffold(
+            showsHandle: shouldShowSheetTopHandle,
+            leading: {
+                leadingBarButton
+            },
+            title: {
+                EmptyView()
+            },
+            trailing: {
+                EmptyView()
+            },
+            content: {
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // 個人資料區塊（頭像 + 名字 + 統計）
+                        profileHeader
+                        
+                        // 標籤切換
+                        tabSection
+                        
+                        // 列表內容
+                        listContent
+                    }
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+                }
             }
-            .padding(.vertical)
-        }
+        )
         .refreshable {
             await viewModel.refreshAll()
         }
-        .navigationTitle("個人資訊")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if showCloseButton {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        onDismiss?()
-                    } label: {
-                        Image(systemName: "xmark")
-                    }
-                }
-            }
-        }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             await viewModel.loadProfile()
             await loadCurrentTabData()
         }
-        .onChange(of: selectedTab) { _, newTab in
+        .onChange(of: selectedTab) { _, _ in
             Task {
                 await loadCurrentTabData()
             }
         }
+        .onAppear {
+            resolveLeadingButtonStyleIfNeeded()
+        }
+    }
+    
+    private var shouldShowSheetTopHandle: Bool {
+        showCloseButton || globalDetailSheetContentTopSpacing > 0
+    }
+    
+    private var isRootUserProfileInGlobalSheet: Bool {
+        guard globalDetailSheetContentTopSpacing > 0 else {
+            return false
+        }
+        guard detailSheetRouter.path.isEmpty else {
+            return false
+        }
+        guard case .userProfile(let rootUserId) = detailSheetRouter.rootRoute else {
+            return false
+        }
+        return rootUserId == userId
+    }
+    
+    private var shouldUseCloseButtonStyle: Bool {
+        if showCloseButton {
+            return true
+        }
+        
+        if let resolvedLeadingButtonStyle {
+            return resolvedLeadingButtonStyle == .close
+        }
+        
+        return isRootUserProfileInGlobalSheet
+    }
+    
+    private func resolveLeadingButtonStyleIfNeeded() {
+        guard !showCloseButton, resolvedLeadingButtonStyle == nil else { return }
+        resolvedLeadingButtonStyle = isRootUserProfileInGlobalSheet ? .close : .back
+    }
+
+    private var leadingBarButton: some View {
+        Button {
+            if shouldUseCloseButtonStyle {
+                if let onDismiss {
+                    onDismiss()
+                } else if globalDetailSheetContentTopSpacing > 0 {
+                    detailSheetRouter.dismiss()
+                } else {
+                    dismiss()
+                }
+            } else {
+                dismiss()
+            }
+        } label: {
+            Image(systemName: shouldUseCloseButtonStyle ? "xmark" : "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(
+                    shouldUseCloseButtonStyle
+                    ? Color(uiColor: .systemIndigo).opacity(0.8)
+                    : .primary
+                )
+        }
+        .buttonStyle(.plain)
     }
     
     // MARK: - Load Data
@@ -168,7 +242,7 @@ struct OtherUserProfileContentView: View {
                     }
                 }
                 .padding(.horizontal, 24)
-                .padding(.vertical, 20)
+                .padding(.vertical, 12)
                 .transition(.opacity)
             }
         }
@@ -212,7 +286,7 @@ struct OtherUserProfileContentView: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 20)
+        .padding(.vertical, 12)
     }
     
     private var statSeparator: some View {

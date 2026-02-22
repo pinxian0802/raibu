@@ -263,7 +263,7 @@ struct RecordDetailContentView: View {
             }
         }
         .task {
-            await viewModel.loadRecord()
+            viewModel.loadRecord()
         }
         .confirmationDialog("管理", isPresented: $showMoreOptions) {
             Button("編輯", role: nil) {
@@ -274,7 +274,7 @@ struct RecordDetailContentView: View {
             }
             Button("取消", role: .cancel) {}
         }
-        .sheet(isPresented: $showEditSheet) {
+        .navigationDestination(isPresented: $showEditSheet) {
             if let record = viewModel.record {
                 EditRecordView(
                     recordId: viewModel.recordId,
@@ -283,10 +283,19 @@ struct RecordDetailContentView: View {
                     recordRepository: container.recordRepository,
                     onComplete: {
                         Task {
-                            await viewModel.loadRecord()
+                            viewModel.loadRecord()
                         }
                     }
                 )
+            } else {
+                VStack(spacing: 0) {
+                    SheetTopHandle()
+                    RecordDetailSkeleton()
+                }
+                .background(Color.appSurface)
+                .task {
+                    viewModel.loadRecord()
+                }
             }
         }
         .alert("確認刪除", isPresented: $viewModel.showDeleteConfirmation) {
@@ -459,7 +468,7 @@ struct RecordDetailContentView: View {
             
             Button("重試") {
                 Task {
-                    await viewModel.loadRecord()
+                    viewModel.loadRecord()
                 }
             }
         }

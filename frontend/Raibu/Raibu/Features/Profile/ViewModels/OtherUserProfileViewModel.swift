@@ -18,8 +18,8 @@ class OtherUserProfileViewModel: ObservableObject {
     @Published var userAsks: [Ask] = []
     
     // Loading States
-    @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingRecords = false
+    @Published private(set) var isLoading = true
+    @Published private(set) var isLoadingRecords = true
     @Published private(set) var isLoadingAsks = false
     
     // Error States
@@ -45,20 +45,7 @@ class OtherUserProfileViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            let loadedProfile = try await userRepository.getUserProfile(id: userId)
-            
-            profile = UserProfile(
-                id: loadedProfile.id,
-                displayName: loadedProfile.displayName,
-                avatarUrl: loadedProfile.avatarUrl,
-                bio: loadedProfile.bio,
-                totalRecords: 0,  // TODO: 從 API 取得
-                totalAsks: 0,     // TODO: 從 API 取得
-                totalViews: loadedProfile.totalViews ?? 0,
-                totalLikes: 0,    // TODO: 從 API 取得
-                createdAt: loadedProfile.createdAt ?? Date()
-            )
-            
+            profile = try await userRepository.getUserProfileDetail(id: userId)
         } catch is CancellationError {
             #if DEBUG
             print("⚠️ 載入用戶資料被取消")

@@ -68,8 +68,179 @@ class PhotoPickerService: ObservableObject {
 
         return localIdentifiers.compactMap { assetMap[$0] }
     }
+    
+    /// 嘗試以拍攝時間與座標對應既有圖片到本機相簿 asset localIdentifier（依 displayOrder）
+    func inferAssetLocalIdentifiers(for images: [ImageMedia]) async -> [String] {
+        guard !images.isEmpty else { return [] }
+        
+        let orderedImages = images.sorted { $0.displayOrder < $1.displayOrder }
+        var usedAssetIDs: Set<String> = []
+        var matchedIDs: [String] = []
+        
+        for image in orderedImages {
+            if let assetID = inferredAssetID(for: image, excluding: usedAssetIDs) {
+                usedAssetIDs.insert(assetID)
+                matchedIDs.append(assetID)
+            }
+        }
+        
+        return matchedIDs
+    }
 
     // MARK: - Private Helpers
+    
+    private func bestMatchingAssetID(
+        for image: ImageMedia,
+        excluding usedAssetIDs: Set<String>,
+        timeTolerance: TimeInterval,
+        distanceToleranceMeters: Double
+    ) -> String? {
+        guard let capturedAt = image.capturedAt else { return nil }
+        
+        let fetchOptions = PHFetchOptions()
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+        
+        let start = capturedAt.addingTimeInterval(-timeTolerance)
+        let end = capturedAt.addingTimeInterval(timeTolerance)
+        fetchOptions.predicate = NSPredicate(
+            format: "creationDate >= %@ AND creationDate <= %@",
+            start as CVarArg,
+            end as CVarArg
+        )
+        
+        let fetchResult = PHAsset.fetchAssets(with: .image, options: fetchOptions)
+        guard fetchResult.count > 0 else { return nil }
+        
+        var bestMatch: (assetID: String, score: Double)?
+        
+        fetchResult.enumerateObjects { asset, _, stop in
+            let assetID = asset.localIdentifier
+            guard !usedAssetIDs.contains(assetID) else { return }
+            guard let assetDate = asset.creationDate else { return }
+            
+            let timeDelta = abs(assetDate.timeIntervalSince(capturedAt))
+            guard timeDelta <= timeTolerance else { return }
+            
+            var distanceScore = 0.0
+            if let targetLocation = image.location?.clLocationCoordinate {
+                guard let assetCoordinate = asset.location?.coordinate else { return }
+                let target = CLLocation(latitude: targetLocation.latitude, longitude: targetLocation.longitude)
+                let assetLocation = CLLocation(latitude: assetCoordinate.latitude, longitude: assetCoordinate.longitude)
+                let distance = target.distance(from: assetLocation)
+                guard distance <= distanceToleranceMeters else { return }
+                distanceScore = distance
+            }
+            
+            let score = timeDelta + distanceScore * 4.0
+            if let currentBest = bestMatch {
+                if score < currentBest.score {
+                    bestMatch = (assetID, score)
+                }
+            } else {
+                bestMatch = (assetID, score)
+            }
+            
+            if score < 1.0 {
+                stop.pointee = true
+            }
+        }
+        
+        return bestMatch?.assetID
+    }
+
+    private func inferredAssetID(
+        for image: ImageMedia,
+        excluding usedAssetIDs: Set<String>
+    ) -> String? {
+        if let strictMatch = bestMatchingAssetID(
+            for: image,
+            excluding: usedAssetIDs,
+            timeTolerance: 60,
+            distanceToleranceMeters: 80
+        ) {
+            return strictMatch
+        }
+
+        if let mediumMatch = bestMatchingAssetID(
+            for: image,
+            excluding: usedAssetIDs,
+            timeTolerance: 600,
+            distanceToleranceMeters: 300
+        ) {
+            return mediumMatch
+        }
+
+        // 後端時間若有時區偏移，放寬到 14 小時以提高回填成功率。
+        if let relaxedMatch = bestMatchingAssetID(
+            for: image,
+            excluding: usedAssetIDs,
+            timeTolerance: 14 * 60 * 60,
+            distanceToleranceMeters: 300
+        ) {
+            return relaxedMatch
+        }
+
+        return bestMatchingAssetIDByLocation(
+            for: image,
+            excluding: usedAssetIDs,
+            distanceToleranceMeters: 80
+        )
+    }
+
+    private func bestMatchingAssetIDByLocation(
+        for image: ImageMedia,
+        excluding usedAssetIDs: Set<String>,
+        distanceToleranceMeters: Double
+    ) -> String? {
+        guard let targetCoordinate = image.location?.clLocationCoordinate else { return nil }
+
+        let targetLocation = CLLocation(
+            latitude: targetCoordinate.latitude,
+            longitude: targetCoordinate.longitude
+        )
+
+        let fetchOptions = PHFetchOptions()
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        fetchOptions.predicate = NSPredicate(format: "location != nil")
+
+        let fetchResult = PHAsset.fetchAssets(with: .image, options: fetchOptions)
+        var bestMatch: (assetID: String, distance: Double)?
+        var scannedCount = 0
+        let maxScanCount = 5000
+
+        fetchResult.enumerateObjects { asset, _, stop in
+            scannedCount += 1
+            if scannedCount > maxScanCount {
+                stop.pointee = true
+                return
+            }
+
+            let assetID = asset.localIdentifier
+            guard !usedAssetIDs.contains(assetID),
+                  let assetCoordinate = asset.location?.coordinate else { return }
+
+            let assetLocation = CLLocation(
+                latitude: assetCoordinate.latitude,
+                longitude: assetCoordinate.longitude
+            )
+            let distance = targetLocation.distance(from: assetLocation)
+            guard distance <= distanceToleranceMeters else { return }
+
+            if let currentBest = bestMatch {
+                if distance < currentBest.distance {
+                    bestMatch = (assetID, distance)
+                }
+            } else {
+                bestMatch = (assetID, distance)
+            }
+
+            if distance < 5 {
+                stop.pointee = true
+            }
+        }
+
+        return bestMatch?.assetID
+    }
 
     private func datePredicate(startDate: Date?, endDate: Date?) -> NSPredicate? {
         let calendar = Calendar.current

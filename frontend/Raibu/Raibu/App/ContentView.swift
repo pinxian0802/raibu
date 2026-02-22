@@ -12,6 +12,7 @@ struct ContentView: View {
     @EnvironmentObject var container: DIContainer
     @EnvironmentObject var authService: AuthService
     @Environment(\.scenePhase) var scenePhase
+    @State private var isSyncingCurrentUserProfile = false
     
     var body: some View {
         Group {
@@ -31,6 +32,13 @@ struct ContentView: View {
         .onAppear {
             Task {
                 await authService.checkAuthStatus()
+                await syncCurrentUserProfileIfNeeded()
+            }
+        }
+        .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
+            guard isAuthenticated else { return }
+            Task {
+                await syncCurrentUserProfileIfNeeded()
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -38,8 +46,28 @@ struct ContentView: View {
             if newPhase == .active {
                 Task {
                     await authService.checkAuthStatus()
+                    await syncCurrentUserProfileIfNeeded()
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func syncCurrentUserProfileIfNeeded() async {
+        guard authService.isAuthenticated else { return }
+        guard !authService.isCurrentUserProfileSynced else { return }
+        guard !isSyncingCurrentUserProfile else { return }
+
+        isSyncingCurrentUserProfile = true
+        defer { isSyncingCurrentUserProfile = false }
+
+        do {
+            let profile = try await container.userRepository.getMe()
+            authService.cacheCurrentUserProfile(profile.toUser())
+        } catch {
+            #if DEBUG
+            print("⚠️ syncCurrentUserProfileIfNeeded failed: \(error.localizedDescription)")
+            #endif
         }
     }
 }

@@ -66,6 +66,19 @@ struct GlobalDetailSheetHost: ViewModifier {
             .environmentObject(navigationCoordinator)
             .environmentObject(container)
             .environmentObject(authService)
+        
+        case .recordEdit(let recordId):
+            RecordEditRouteView(
+                recordId: recordId,
+                prefetchedRecord: detailSheetRouter.recordEditPrefetchedRecord(for: recordId),
+                recordRepository: container.recordRepository,
+                uploadService: container.uploadService,
+                onComplete: {
+                    detailSheetRouter.notifyRecordUpdated(recordId: recordId)
+                }
+            )
+            .environmentObject(container)
+            .environmentObject(authService)
 
         case .ask(let askId):
             AskDetailSheetView(
@@ -92,5 +105,96 @@ struct GlobalDetailSheetHost: ViewModifier {
 extension View {
     func withGlobalDetailSheetHost() -> some View {
         modifier(GlobalDetailSheetHost())
+    }
+}
+
+private struct RecordEditRouteView: View {
+    let recordId: String
+    let prefetchedRecord: Record?
+    let recordRepository: RecordRepository
+    let uploadService: UploadService
+    let onComplete: () -> Void
+
+    @State private var record: Record?
+    @State private var isLoading: Bool
+    @State private var errorMessage: String?
+    @State private var hasStartedInitialLoad = false
+
+    init(
+        recordId: String,
+        prefetchedRecord: Record?,
+        recordRepository: RecordRepository,
+        uploadService: UploadService,
+        onComplete: @escaping () -> Void
+    ) {
+        self.recordId = recordId
+        self.prefetchedRecord = prefetchedRecord
+        self.recordRepository = recordRepository
+        self.uploadService = uploadService
+        self.onComplete = onComplete
+        _record = State(initialValue: prefetchedRecord)
+        _isLoading = State(initialValue: prefetchedRecord == nil)
+    }
+
+    var body: some View {
+        Group {
+            if let record {
+                EditRecordView(
+                    recordId: recordId,
+                    record: record,
+                    uploadService: uploadService,
+                    recordRepository: recordRepository,
+                    onComplete: onComplete
+                )
+            } else if isLoading {
+                VStack(spacing: 0) {
+                    SheetTopHandle()
+                    RecordDetailSkeleton()
+                }
+                .background(Color.appSurface)
+            } else {
+                VStack(spacing: 16) {
+                    SheetTopHandle()
+                    Spacer()
+
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+
+                    Text(errorMessage ?? "載入失敗")
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Button("重試") {
+                        Task {
+                            await loadRecord()
+                        }
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+            }
+        }
+        .task {
+            guard !hasStartedInitialLoad else { return }
+            hasStartedInitialLoad = true
+            guard record == nil else { return }
+            await loadRecord()
+        }
+    }
+
+    @MainActor
+    private func loadRecord() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            record = try await recordRepository.getRecordDetail(id: recordId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
     }
 }

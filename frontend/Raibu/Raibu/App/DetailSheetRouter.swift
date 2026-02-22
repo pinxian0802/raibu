@@ -11,6 +11,7 @@ import Combine
 /// 全域詳情路由
 enum DetailSheetRoute: Hashable, Identifiable {
     case record(id: String, imageIndex: Int)
+    case recordEdit(id: String)
     case ask(id: String)
     case userProfile(id: String)
 
@@ -18,6 +19,8 @@ enum DetailSheetRoute: Hashable, Identifiable {
         switch self {
         case .record(let id, let imageIndex):
             return "record-\(id)-\(imageIndex)"
+        case .recordEdit(let id):
+            return "record-edit-\(id)"
         case .ask(let id):
             return "ask-\(id)"
         case .userProfile(let id):
@@ -31,6 +34,8 @@ class DetailSheetRouter: ObservableObject {
     @Published var isPresented = false
     @Published var rootRoute: DetailSheetRoute?
     @Published var path: [DetailSheetRoute] = []
+    @Published private(set) var recordRefreshVersions: [String: Int] = [:]
+    private var recordEditPrefetchedRecords: [String: Record] = [:]
 
     /// 根據當前狀態決定 present 或 push
     func open(_ route: DetailSheetRoute) {
@@ -39,6 +44,14 @@ class DetailSheetRouter: ObservableObject {
         } else {
             present(route)
         }
+    }
+
+    /// 開啟編輯紀錄頁，並可帶入已載入的紀錄資料以避免重複等待
+    func openRecordEdit(id: String, prefetchedRecord: Record?) {
+        if let prefetchedRecord {
+            recordEditPrefetchedRecords[id] = prefetchedRecord
+        }
+        open(.recordEdit(id: id))
     }
 
     /// 開啟新的詳情流程
@@ -62,5 +75,21 @@ class DetailSheetRouter: ObservableObject {
         isPresented = false
         rootRoute = nil
         path = []
+        recordEditPrefetchedRecords.removeAll()
+    }
+
+    /// 通知指定紀錄需要刷新（例如編輯完成後）
+    func notifyRecordUpdated(recordId: String) {
+        recordRefreshVersions[recordId, default: 0] += 1
+    }
+
+    /// 取得指定紀錄目前的刷新版本（供 onChange 監聽）
+    func recordRefreshVersion(for recordId: String) -> Int {
+        recordRefreshVersions[recordId, default: 0]
+    }
+
+    /// 取得編輯前快取的紀錄資料
+    func recordEditPrefetchedRecord(for recordId: String) -> Record? {
+        recordEditPrefetchedRecords[recordId]
     }
 }

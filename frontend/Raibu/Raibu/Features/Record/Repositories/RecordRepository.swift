@@ -55,8 +55,13 @@ class RecordRepository: RecordRepositoryProtocol {
             description: description,
             sortedImages: sortedImages
         )
-        
-        return try await apiClient.patch(.updateRecord(id: id), body: request)
+
+        do {
+            return try await apiClient.patch(.updateRecord(id: id), body: request)
+        } catch is DecodingError {
+            // 有些環境下更新 API 會成功但回傳 payload 不完整，fallback 重新抓詳情避免誤判失敗。
+            return try await getRecordDetail(id: id)
+        }
     }
     
     /// 刪除紀錄

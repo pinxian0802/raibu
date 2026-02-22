@@ -22,6 +22,11 @@ class UserRepository: UserRepositoryProtocol {
         let profile: UserProfile = try await apiClient.get(.getUserProfile(userId: id))
         return profile.toUser()
     }
+
+    /// 取得使用者完整個人資訊（包含統計數據）
+    func getUserProfileDetail(id: String) async throws -> UserProfile {
+        try await apiClient.get(.getUserProfile(userId: id))
+    }
     
     /// 更新個人資料
     func updateProfile(displayName: String?, avatarUrl: String?) async throws -> User {

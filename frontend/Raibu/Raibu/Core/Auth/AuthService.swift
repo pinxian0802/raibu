@@ -25,6 +25,7 @@ class AuthService: ObservableObject {
     
     @Published var authState: AuthState = .unauthenticated
     @Published var currentUser: User?
+    @Published private(set) var isCurrentUserProfileSynced = false
     @Published var isLoading = false
     
     /// 便捷屬性：當前使用者 ID
@@ -197,6 +198,7 @@ class AuthService: ObservableObject {
         
         await MainActor.run {
             currentUser = authResponse.user
+            isCurrentUserProfileSynced = false
             authState = .authenticated
         }
     }
@@ -222,6 +224,7 @@ class AuthService: ObservableObject {
                     totalViews: 0,
                     createdAt: Date()
                 )
+                isCurrentUserProfileSynced = false
                 authState = .awaitingEmailVerification(email: email)
             }
             return
@@ -287,6 +290,7 @@ class AuthService: ObservableObject {
                 
                 await MainActor.run {
                     currentUser = signUpResponse.user
+                    isCurrentUserProfileSynced = false
                     authState = .authenticated
                 }
             }
@@ -416,6 +420,7 @@ class AuthService: ObservableObject {
         
         await MainActor.run {
             currentUser = authResponse.user
+            isCurrentUserProfileSynced = false
             // 新用戶需要完善個人資料（設定頭貼）
             authState = .awaitingProfileSetup
         }
@@ -713,6 +718,13 @@ class AuthService: ObservableObject {
     func skipProfileSetup() {
         authState = .authenticated
     }
+
+    /// 同步並快取後端使用者資料（供 UI 直接讀取，避免各頁重複打 API）
+    @MainActor
+    func cacheCurrentUserProfile(_ user: User) {
+        currentUser = user
+        isCurrentUserProfileSynced = true
+    }
     
     /// 登出
     func signOut() async {
@@ -721,6 +733,7 @@ class AuthService: ObservableObject {
         
         await MainActor.run {
             currentUser = nil
+            isCurrentUserProfileSynced = false
             authState = .unauthenticated
         }
     }
@@ -783,6 +796,7 @@ class AuthService: ObservableObject {
                             totalViews: nil,
                             createdAt: nil
                         )
+                        self.isCurrentUserProfileSynced = false
                         print("✅ currentUser set: id=\(user.id)")
                     }
                 } else {

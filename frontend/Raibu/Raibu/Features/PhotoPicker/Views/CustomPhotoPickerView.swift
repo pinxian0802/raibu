@@ -39,9 +39,11 @@ struct CustomPhotoPickerView: View {
         requireGPS: Bool = false,
         maxSelection: Int = 10,
         initialSelectedPhotos: [SelectedPhoto] = [],
+        initialSelectedAssetIDs: [String]? = nil,
         onComplete: @escaping ([SelectedPhoto]) -> Void
     ) {
-        let initialSelectedAssetIDs = initialSelectedPhotos.map { $0.asset.localIdentifier }
+        let initialSelectedAssetIDs = initialSelectedAssetIDs
+            ?? initialSelectedPhotos.map { $0.asset.localIdentifier }
         _viewModel = StateObject(wrappedValue: PhotoPickerViewModel(
             photoPickerService: photoPickerService,
             requireGPS: requireGPS,
@@ -115,8 +117,8 @@ struct CustomPhotoPickerView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 24)
-        .padding(.bottom, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
     }
     
     private var filterControls: some View {
@@ -464,7 +466,7 @@ struct CustomPhotoPickerView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 14)
+            .padding(.bottom, 8)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {

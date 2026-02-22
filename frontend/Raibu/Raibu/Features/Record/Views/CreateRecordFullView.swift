@@ -16,9 +16,6 @@ struct CreateRecordFullView: View {
     @StateObject private var viewModel: CreateRecordViewModel
     @State private var showPhotoPicker = false
     @State private var showErrorAlert = false
-    @State private var currentUserAvatarURLFromProfile: String?
-    @State private var currentUserDisplayNameFromProfile: String?
-    @State private var hasLoadedCurrentUserProfile = false
     @FocusState private var isDescriptionFocused: Bool
 
     private let placeholderFont = Font.custom("PingFangTC-Medium", size: 39 / 2)
@@ -34,17 +31,56 @@ struct CreateRecordFullView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            handleView
-            headerBar
-            composerSection
+        BottomSheetScaffold(
+            leading: {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .semibold))
+                }
+                .foregroundColor(Color(uiColor: .systemIndigo).opacity(0.8))
+                .disabled(viewModel.isUploading)
+                .buttonStyle(.plain)
+            },
+            title: {
+                Text("新增紀錄")
+                    .font(.custom("PingFangTC-Semibold", size: 37 / 2))
+                    .foregroundColor(.primary)
+            },
+            trailing: {
+                Button {
+                    isDescriptionFocused = false
+                    Task {
+                        await viewModel.submit()
+                    }
+                } label: {
+                    Group {
+                        if viewModel.isUploading {
+                            ProgressView()
+                                .tint(actionGreen)
+                        } else {
+                            Text("新增")
+                        }
+                    }
+                    .font(.custom("PingFangTC-Semibold", size: 17))
+                }
+                .foregroundColor(viewModel.canSubmit ? actionGreen : .secondary)
+                .disabled(!viewModel.canSubmit)
+                .buttonStyle(.plain)
+            },
+            content: {
+                VStack(spacing: 0) {
+                    composerSection
 
-            Divider()
-                .padding(.horizontal, 24)
+                    Divider()
+                        .padding(.horizontal, 24)
 
-            attachmentsSection
-            photoActionBar
-        }
+                    attachmentsSection
+                    photoActionBar
+                }
+            }
+        )
         .background(Color.appSurface)
         .sheet(isPresented: $showPhotoPicker) {
             CustomPhotoPickerView(
@@ -72,60 +108,6 @@ struct CreateRecordFullView: View {
             }
         }
         .presentationDragIndicator(.hidden)
-        .task {
-            guard !hasLoadedCurrentUserProfile else { return }
-            hasLoadedCurrentUserProfile = true
-            await loadCurrentUserProfileIfNeeded()
-        }
-    }
-
-    // MARK: - Top Section
-
-    private var handleView: some View {
-        SheetTopHandle()
-    }
-
-    private var headerBar: some View {
-        ZStack {
-            Text("新增紀錄")
-                .font(.custom("PingFangTC-Semibold", size: 37 / 2))
-                .foregroundColor(.primary)
-
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .semibold))
-                }
-                .foregroundColor(Color(uiColor: .systemIndigo).opacity(0.8))
-                .disabled(viewModel.isUploading)
-
-                Spacer()
-
-                Button {
-                    isDescriptionFocused = false
-                    Task {
-                        await viewModel.submit()
-                    }
-                } label: {
-                    Group {
-                        if viewModel.isUploading {
-                            ProgressView()
-                                .tint(actionGreen)
-                        } else {
-                            Text("新增")
-                        }
-                    }
-                    .font(.custom("PingFangTC-Semibold", size: 17))
-                }
-                .foregroundColor(viewModel.canSubmit ? actionGreen : .secondary)
-                .disabled(!viewModel.canSubmit)
-            }
-        }
-        .padding(.horizontal, 24)
-        .frame(height: 56)
-        .padding(.bottom, 8)
     }
 
     private var composerSection: some View {
@@ -202,13 +184,6 @@ struct CreateRecordFullView: View {
            !avatar.isEmpty {
             return avatar
         }
-
-        if let fallback = currentUserAvatarURLFromProfile?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !fallback.isEmpty {
-            return fallback
-        }
-
         return nil
     }
 
@@ -218,51 +193,7 @@ struct CreateRecordFullView: View {
            !name.isEmpty {
             return name
         }
-
-        if let fallback = currentUserDisplayNameFromProfile?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !fallback.isEmpty {
-            return fallback
-        }
-
         return "使用者"
-    }
-
-    private func loadCurrentUserProfileIfNeeded() async {
-        let authAvatar = container.authService.currentUser?.avatarUrl?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let authName = container.authService.currentUser?.displayName
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let hasAvatarInAuth = !authAvatar.isEmpty
-        let hasNameInAuth = !authName.isEmpty
-
-        if hasAvatarInAuth && hasNameInAuth {
-            return
-        }
-
-        do {
-            let profileUser: User
-            if let currentUserId = container.authService.currentUserId {
-                profileUser = try await container.userRepository.getUserProfile(id: currentUserId)
-            } else {
-                let me = try await container.userRepository.getMe()
-                profileUser = me.toUser()
-            }
-
-            let profileAvatar = profileUser.avatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let profileName = profileUser.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            await MainActor.run {
-                if let profileAvatar, !profileAvatar.isEmpty {
-                    currentUserAvatarURLFromProfile = profileAvatar
-                }
-                if !profileName.isEmpty {
-                    currentUserDisplayNameFromProfile = profileName
-                }
-            }
-        } catch {
-            // 失敗時保持靜默，沿用目前 auth 資料或預設值。
-        }
     }
 
     // MARK: - Attachment Section

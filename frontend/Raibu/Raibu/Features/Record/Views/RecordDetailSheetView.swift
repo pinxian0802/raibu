@@ -12,21 +12,19 @@ import Kingfisher
 /// 紀錄詳情 Sheet 視圖
 struct RecordDetailSheetView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.globalDetailSheetContentTopSpacing) private var globalDetailSheetContentTopSpacing
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @EnvironmentObject var container: DIContainer
     @StateObject private var viewModel: RecordDetailViewModel
     @State private var showReplyInput = false
     @State private var showMoreOptions = false
-    @State private var showEditSheet = false
     @State private var showReportSheet = false
     @State private var replyText = ""
-    @State private var currentUserAvatarURLFromProfile: String?
     @State private var isDescriptionExpanded = false
     @State private var isHeartAnimating = false
     @State private var isLoadingPulseActive = false
     @State private var hasStartedInitialLoad = false
+    @State private var keepBackButtonVisibleDuringDismiss = false
     
     private let descriptionCollapsedLineLimit = 3
     private let descriptionExpandThreshold = 90
@@ -36,6 +34,8 @@ struct RecordDetailSheetView: View {
     private let descriptionFont = Font.system(size: 16, weight: .regular, design: .rounded)
     private let actionFont = Font.system(size: 14, weight: .medium, design: .rounded)
     private let moreOptionsMenuWidth: CGFloat = 186
+    private let contentTopPaddingWithoutBackButton: CGFloat = 10
+    private let contentTopPaddingWithBackButton: CGFloat = 2
     
     init(
         recordId: String,
@@ -52,26 +52,36 @@ struct RecordDetailSheetView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            // 拖曳指示條
-            SheetTopHandle(bottomPadding: 14 + globalDetailSheetContentTopSpacing)
-            
-            ZStack {
-                if viewModel.isLoading {
-                    loadingView
-                } else if let record = viewModel.record {
-                    VStack(spacing: 0) {
-                        contentView(record: record)
-                        Divider()
-                        bottomReplyInputBar
+        BottomSheetScaffold(
+            showsTopBar: shouldShowBackButton,
+            topBarBottomPadding: shouldShowBackButton ? 0 : BottomSheetLayoutMetrics.topBarBottomPadding,
+            leading: {
+                leadingBackButton
+            },
+            title: {
+                EmptyView()
+            },
+            trailing: {
+                EmptyView()
+            },
+            content: {
+                ZStack {
+                    if viewModel.isLoading {
+                        loadingView
+                    } else if let record = viewModel.record {
+                        VStack(spacing: 0) {
+                            contentView(record: record)
+                            Divider()
+                            bottomReplyInputBar
+                        }
+                    } else if let error = viewModel.errorMessage {
+                        errorView(message: error)
+                    } else {
+                        loadingView
                     }
-                } else if let error = viewModel.errorMessage {
-                    errorView(message: error)
-                } else {
-                    loadingView
                 }
             }
-        }
+        )
         .overlayPreferenceValue(MoreOptionsButtonAnchorPreferenceKey.self) { anchor in
             GeometryReader { proxy in
                 if showMoreOptions, let anchor {
@@ -89,22 +99,6 @@ struct RecordDetailSheetView: View {
             guard !hasStartedInitialLoad else { return }
             hasStartedInitialLoad = true
             viewModel.loadRecord()
-            await loadCurrentUserAvatarIfNeeded()
-        }
-        .sheet(isPresented: $showEditSheet) {
-            if let record = viewModel.record {
-                EditRecordView(
-                    recordId: viewModel.recordId,
-                    record: record,
-                    uploadService: container.uploadService,
-                    recordRepository: container.recordRepository,
-                    onComplete: {
-                        Task {
-                            viewModel.loadRecord()
-                        }
-                    }
-                )
-            }
         }
         .sheet(isPresented: $showReportSheet) {
             ReportSheetView(
@@ -115,9 +109,40 @@ struct RecordDetailSheetView: View {
         .onChange(of: viewModel.record?.id) { _, _ in
             isDescriptionExpanded = false
         }
+        .onChange(of: detailSheetRouter.recordRefreshVersion(for: viewModel.recordId)) { _, _ in
+            viewModel.loadRecord()
+        }
         .onDisappear {
             viewModel.cancelAllTasks()
         }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var shouldShowBackButton: Bool {
+        if keepBackButtonVisibleDuringDismiss {
+            return true
+        }
+        guard case .record(let currentRouteRecordId, _) = detailSheetRouter.path.last else {
+            return false
+        }
+        return currentRouteRecordId == viewModel.recordId
+    }
+
+    private var leadingBackButton: some View {
+        Button {
+            keepBackButtonVisibleDuringDismiss = true
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var contentTopPadding: CGFloat {
+        shouldShowBackButton ? contentTopPaddingWithBackButton : contentTopPaddingWithoutBackButton
     }
     
     // MARK: - Content View
@@ -139,6 +164,7 @@ struct RecordDetailSheetView: View {
                             .padding(.bottom, 24)
                     }
                 }
+                .padding(.top, contentTopPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -405,6 +431,7 @@ struct RecordDetailSheetView: View {
                         loadingRecordBodySection
                             .frame(minHeight: proxy.size.height * 0.82, alignment: .top)
                     }
+                    .padding(.top, contentTopPadding)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .scrollDisabled(true)
@@ -549,7 +576,10 @@ struct RecordDetailSheetView: View {
             if viewModel.isOwner {
                 optionRow(title: "編輯", systemImage: "pencil") {
                     showMoreOptions = false
-                    showEditSheet = true
+                    detailSheetRouter.openRecordEdit(
+                        id: viewModel.recordId,
+                        prefetchedRecord: viewModel.record
+                    )
                 }
                 optionDivider
                 optionRow(title: "刪除", systemImage: "trash", role: .destructive) {
@@ -705,33 +735,7 @@ struct RecordDetailSheetView: View {
            !avatar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return avatar
         }
-        
-        if let fallback = currentUserAvatarURLFromProfile,
-           !fallback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return fallback
-        }
-        
         return nil
-    }
-    
-    private func loadCurrentUserAvatarIfNeeded() async {
-        guard let currentUserId = container.authService.currentUserId else { return }
-        
-        if let avatar = container.authService.currentUser?.avatarUrl,
-           !avatar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return
-        }
-        
-        do {
-            let profile = try await container.userRepository.getUserProfile(id: currentUserId)
-            let avatar = profile.avatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let avatar, !avatar.isEmpty else { return }
-            await MainActor.run {
-                currentUserAvatarURLFromProfile = avatar
-            }
-        } catch {
-            // 保持靜默，失敗時沿用預設頭像
-        }
     }
     
     private func formatTimeAgo(_ date: Date) -> String {

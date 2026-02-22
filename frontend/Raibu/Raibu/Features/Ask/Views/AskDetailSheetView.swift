@@ -17,7 +17,6 @@ struct AskDetailSheetView: View {
     let replyRepository: ReplyRepository
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.globalDetailSheetContentTopSpacing) private var globalDetailSheetContentTopSpacing
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @EnvironmentObject var container: DIContainer
@@ -43,7 +42,7 @@ struct AskDetailSheetView: View {
     var body: some View {
         VStack(spacing: 0) {
             // 拖曳指示條
-            SheetTopHandle(bottomPadding: 14 + globalDetailSheetContentTopSpacing)
+            SheetTopHandle(bottomPadding: 10)
 
             NavigationView {
                 ScrollView {
