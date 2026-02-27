@@ -16,6 +16,7 @@ struct ImageCarouselView: View {
     let imageContentMode: SwiftUI.ContentMode
     let imageHeight: CGFloat
     var onImageTap: ((ImageMedia) -> Void)?  // 點擊圖片的回調
+    var onImageTapForFullScreen: ((_ images: [ImageMedia], _ index: Int) -> Void)?  // 觸發全螢幕查看
     var onLocationTap: ((ImageMedia) -> Void)?  // 點擊「查看位置」按鈕的回調
     
     @State private var currentIndex: Int = 0
@@ -27,6 +28,7 @@ struct ImageCarouselView: View {
         imageContentMode: SwiftUI.ContentMode = .fit,
         imageHeight: CGFloat = 280,
         onImageTap: ((ImageMedia) -> Void)? = nil,
+        onImageTapForFullScreen: ((_ images: [ImageMedia], _ index: Int) -> Void)? = nil,
         onLocationTap: ((ImageMedia) -> Void)? = nil
     ) {
         self.images = images
@@ -34,6 +36,7 @@ struct ImageCarouselView: View {
         self.imageContentMode = imageContentMode
         self.imageHeight = imageHeight
         self.onImageTap = onImageTap
+        self.onImageTapForFullScreen = onImageTapForFullScreen
         self.onLocationTap = onLocationTap
     }
     
@@ -45,7 +48,11 @@ struct ImageCarouselView: View {
                     imageView(for: images[index])
                         .tag(index)
                         .onTapGesture {
-                            onImageTap?(images[index])
+                            if let onImageTap {
+                                onImageTap(images[index])
+                            } else {
+                                onImageTapForFullScreen?(images, index)
+                            }
                         }
                 }
             }

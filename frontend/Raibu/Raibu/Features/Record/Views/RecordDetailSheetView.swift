@@ -16,7 +16,6 @@ struct RecordDetailSheetView: View {
     @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @EnvironmentObject var container: DIContainer
     @StateObject private var viewModel: RecordDetailViewModel
-    @State private var showReplyInput = false
     @State private var showMoreOptions = false
     @State private var showReportSheet = false
     @State private var replyText = ""
@@ -26,13 +25,15 @@ struct RecordDetailSheetView: View {
     @State private var hasStartedInitialLoad = false
     @State private var keepBackButtonVisibleDuringDismiss = false
     
-    private let descriptionCollapsedLineLimit = 3
-    private let descriptionExpandThreshold = 90
+    // Fullscreen Image Viewer
+    @State private var showFullScreenImage = false
+    @State private var fullScreenImages: [ImageMedia] = []
+    @State private var fullScreenImageIndex: Int = 0
+    @State private var scrolledImageId: String?
     
-    private let authorNameFont = Font.system(size: 18, weight: .semibold, design: .rounded)
-    private let metaCaptionFont = Font.system(size: 12, weight: .regular, design: .rounded)
     private let descriptionFont = Font.system(size: 16, weight: .regular, design: .rounded)
-    private let actionFont = Font.system(size: 14, weight: .medium, design: .rounded)
+    private let imageCardWidth: CGFloat = 300
+    private let imageCardHeight: CGFloat = 375
     private let moreOptionsMenuWidth: CGFloat = 186
     private let contentTopPaddingWithoutBackButton: CGFloat = 10
     private let contentTopPaddingWithBackButton: CGFloat = 2
@@ -72,7 +73,12 @@ struct RecordDetailSheetView: View {
                         VStack(spacing: 0) {
                             contentView(record: record)
                             Divider()
-                            bottomReplyInputBar
+                            DetailReplyInputBar(
+                                replyText: $replyText,
+                                isSubmitting: viewModel.isSubmittingReply,
+                                currentUserAvatarURL: DetailSheetHelpers.currentUserAvatarURL(from: container.authService),
+                                onSubmit: { submitReply() }
+                            )
                         }
                     } else if let error = viewModel.errorMessage {
                         errorView(message: error)
@@ -82,19 +88,40 @@ struct RecordDetailSheetView: View {
                 }
             }
         )
+        .background(Color.appSurface)
         .overlayPreferenceValue(MoreOptionsButtonAnchorPreferenceKey.self) { anchor in
             GeometryReader { proxy in
                 if showMoreOptions, let anchor {
                     let buttonFrame = proxy[anchor]
-                    moreOptionsOverlay(buttonFrame: buttonFrame)
+                    DetailMoreOptionsOverlay(
+                        buttonFrame: buttonFrame,
+                        menuWidth: moreOptionsMenuWidth,
+                        onDismiss: { showMoreOptions = false }
+                    ) {
+                        moreOptionsMenuContent
+                    }
                 }
             }
         }
         .overlay {
             if viewModel.showDeleteConfirmation {
-                deleteConfirmationOverlay
+                DetailDeleteConfirmation(
+                    isPresented: $viewModel.showDeleteConfirmation,
+                    onDelete: {
+                        Task {
+                            if await viewModel.deleteRecord() {
+                                dismiss()
+                            }
+                        }
+                    }
+                )
             }
         }
+        .fullScreenImageViewer(
+            isPresented: $showFullScreenImage,
+            images: fullScreenImages,
+            initialIndex: fullScreenImageIndex
+        )
         .task {
             guard !hasStartedInitialLoad else { return }
             hasStartedInitialLoad = true
@@ -157,12 +184,24 @@ struct RecordDetailSheetView: View {
                     Divider()
                         .padding(.horizontal, 16)
                     
-                    if !viewModel.replies.isEmpty {
-                        repliesSection
-                            .padding(.horizontal, 16)
-                            .padding(.top, 12)
-                            .padding(.bottom, 24)
-                    }
+                    DetailRepliesSection(
+                        replies: viewModel.replies,
+                        isLoadingReplies: false,
+                        onAuthorTap: { userId in
+                            detailSheetRouter.open(.userProfile(id: userId))
+                        },
+                        onLikeToggle: { replyId in
+                            Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                        },
+                        onImageTapForFullScreen: { images, index in
+                            fullScreenImages = images
+                            fullScreenImageIndex = index
+                            showFullScreenImage = true
+                        }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
                 }
                 .padding(.top, contentTopPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,13 +211,37 @@ struct RecordDetailSheetView: View {
     
     private func recordBodySection(record: Record) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            // 1. 圖片輪播 (置頂，無 Padding)
+            // 1. 用戶資訊列
+            if let author = record.author {
+                DetailAuthorHeaderView(
+                    author: author,
+                    createdAt: record.createdAt,
+                    anchorKey: MoreOptionsButtonAnchorPreferenceKey.self,
+                    onBackTap: { dismiss() },
+                    onAvatarTap: { detailSheetRouter.open(.userProfile(id: author.id)) },
+                    showMoreOptions: $showMoreOptions
+                )
+            }
+
+            // 2. 圖片輪播
             if let images = record.images, !images.isEmpty {
-                ImageCarouselView(
+                DetailImageCarouselView(
                     images: images,
-                    initialIndex: viewModel.initialImageIndex,
-                    imageContentMode: .fill,
-                    imageHeight: 400,
+                    initialImageIndex: viewModel.initialImageIndex,
+                    cardWidth: imageCardWidth,
+                    cardHeight: imageCardHeight,
+                    scrolledImageId: $scrolledImageId,
+                    onImageTap: { imgs, index in
+                        fullScreenImages = imgs
+                        fullScreenImageIndex = index
+                        showFullScreenImage = true
+                    }
+                )
+
+                // 圖片 metadata
+                DetailImageMetaRowView(
+                    image: currentVisibleImage(in: images),
+                    scrolledImageId: scrolledImageId,
                     onLocationTap: { image in
                         if let coordinate = image.clLocationCoordinate {
                             dismiss()
@@ -188,235 +251,81 @@ struct RecordDetailSheetView: View {
                         }
                     }
                 )
+                .padding(.top, 14)
             }
 
-            VStack(alignment: .leading, spacing: 16) {
-                // 2. 用戶資訊列 (頭像、名字、時間、追蹤按鈕)
-                if let author = record.author {
-                    userInfoRow(author: author, createdAt: record.createdAt)
-                }
+            let hasImages = !(record.images?.isEmpty ?? true)
+            VStack(alignment: .leading, spacing: 14) {
+                // 3. 內容描述（有圖片才顯示分隔線）
+                if hasImages { Divider() }
+                DetailDescriptionSection(
+                    description: record.description,
+                    isExpanded: $isDescriptionExpanded,
+                    font: descriptionFont
+                )
                 
-                // 3. 內容描述
-                descriptionTextSection(record.description)
-                
-                interactionSummaryRow
+                DetailInteractionRow(
+                    isLiked: viewModel.isLiked,
+                    likeCount: viewModel.likeCount,
+                    replyCount: viewModel.replies.count,
+                    onLikeTap: { Task { await viewModel.toggleLike() } },
+                    isHeartAnimating: $isHeartAnimating
+                )
             }
             .padding(.horizontal, 16)
-            .padding(.top, 18)
+            .padding(.top, hasImages ? 12 : 4)
             .padding(.bottom, 10)
         }
     }
-    
-    private func descriptionTextSection(_ description: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(description)
-                .font(descriptionFont)
-                .foregroundColor(.primary)
-                .lineLimit(isDescriptionExpanded ? nil : descriptionCollapsedLineLimit)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(2)
-            
-            if shouldShowDescriptionToggle(description) {
-                Button(isDescriptionExpanded ? "收起" : "更多...") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isDescriptionExpanded.toggle()
-                    }
-                }
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundColor(.secondary)
-            }
+
+    private func currentVisibleImage(in images: [ImageMedia]) -> ImageMedia {
+        if let scrolledId = scrolledImageId,
+           let image = images.first(where: { $0.id == scrolledId }) {
+            return image
         }
-        .frame(minHeight: 70, alignment: .topLeading)
+        return images[min(viewModel.initialImageIndex, images.count - 1)]
     }
-    
-    private func shouldShowDescriptionToggle(_ description: String) -> Bool {
-        let lineBreakCount = description.filter { $0 == "\n" }.count
-        return lineBreakCount >= descriptionCollapsedLineLimit || description.count > descriptionExpandThreshold
-    }
-    
-    private var interactionSummaryRow: some View {
-        HStack(spacing: 18) {
-            Button {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) {
-                    isHeartAnimating = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
-                        isHeartAnimating = false
-                    }
-                }
-                Task {
-                    await viewModel.toggleLike()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: viewModel.isLiked ? "heart.fill" : "heart")
-                        .foregroundColor(viewModel.isLiked ? .red : .secondary)
-                        .scaleEffect(isHeartAnimating ? 1.24 : (viewModel.isLiked ? 1.08 : 1.0))
-                        .animation(.spring(response: 0.28, dampingFraction: 0.6), value: isHeartAnimating)
-                        .animation(.easeInOut(duration: 0.15), value: viewModel.isLiked)
-                    Text("\(viewModel.likeCount)")
-                        .foregroundColor(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
-            
-            HStack(spacing: 6) {
-                Image(systemName: "message")
-                    .foregroundColor(.secondary)
-                Text("\(viewModel.replies.count)")
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-        }
-        .font(actionFont)
-        .padding(.top, 2)
-    }
-    
-    // MARK: - User Info Row
-    
-    private func userInfoRow(author: User, createdAt: Date) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            // Avatar
-            Button {
-                detailSheetRouter.open(.userProfile(id: author.id))
-            } label: {
-                KFImage(URL(string: author.avatarUrl ?? ""))
-                    .placeholder {
-                        Circle().fill(Color(.systemGray4))
-                    }
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 40, height: 40)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            // Name & Time
-            VStack(alignment: .leading, spacing: 2) {
-                Text(author.displayName)
-                    .font(authorNameFont)
-                    .foregroundColor(.primary)
-                
-                Text(formatTimeAgo(createdAt))
-                    .font(metaCaptionFont)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            // More Options (replaces old profile button position)
-            moreOptionsButton
-        }
-    }
-    
-    // MARK: - Bottom Reply Bar
-    
-    private var trimmedReplyText: String {
-        replyText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    private var showSendReplyButton: Bool {
-        !trimmedReplyText.isEmpty
-    }
-    
-    private var canSendReply: Bool {
-        showSendReplyButton && !viewModel.isSubmittingReply
-    }
-    
+
+    // MARK: - Reply Submission
+
     private func submitReply() {
-        guard canSendReply else { return }
-        
+        let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !viewModel.isSubmittingReply else { return }
         Task {
-            let success = await viewModel.createReply(content: trimmedReplyText)
+            let success = await viewModel.createReply(content: trimmed)
             if success {
-                await MainActor.run {
-                    replyText = ""
-                }
+                await MainActor.run { replyText = "" }
             }
         }
     }
-    
-    private var bottomReplyInputBar: some View {
-        HStack(spacing: 12) {
-            // Current User Avatar
-            if let avatarURL = currentUserAvatarURL {
-                KFImage(URL(string: avatarURL))
-                    .placeholder {
-                        Circle().fill(Color(.systemGray4))
-                    }
-                    .retry(maxCount: 2, interval: .seconds(1))
-                    .cacheOriginalImage()
-                    .fade(duration: 0.2)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 32, height: 32)
-                    .clipShape(Circle())
-            } else {
-                Image(systemName: "person.circle.fill")
-                    .resizable()
-                    .frame(width: 32, height: 32)
-                    .foregroundColor(.gray)
-            }
-            
-            ZStack(alignment: .trailing) {
-                TextField("說些什麼吧", text: $replyText)
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
-                    .textInputAutocapitalization(.sentences)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        submitReply()
-                    }
-                    .padding(.leading, 16)
-                    .padding(.trailing, showSendReplyButton ? 44 : 16)
-                    .padding(.vertical, 10)
-                    .background(Color(.systemGray6))
-                    .clipShape(Capsule())
-                
-                if showSendReplyButton {
-                    Button {
-                        submitReply()
-                    } label: {
-                        if viewModel.isSubmittingReply {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.brandBlue)
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .foregroundColor(.brandBlue)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canSendReply)
-                    .padding(.trailing, 14)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.appSurface)
-    }
-    
-    // MARK: - Replies Section
-    
-    private var repliesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(viewModel.replies) { reply in
-                ReplyRowView(
-                    reply: reply,
-                    onAuthorTap: { userId in
-                        detailSheetRouter.open(.userProfile(id: userId))
-                    },
-                    onLikeToggle: { replyId in
-                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
-                    }
+
+    // MARK: - More Options Menu Content
+
+    @ViewBuilder
+    private var moreOptionsMenuContent: some View {
+        if viewModel.isOwner {
+            DetailOptionRow(title: "編輯", systemImage: "pencil") {
+                showMoreOptions = false
+                detailSheetRouter.openRecordEdit(
+                    id: viewModel.recordId,
+                    prefetchedRecord: viewModel.record
                 )
-                
-                if reply.id != viewModel.replies.last?.id {
-                    Divider()
+            }
+            DetailOptionDivider()
+            DetailOptionRow(title: "刪除", systemImage: "trash", role: .destructive) {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    showMoreOptions = false
                 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                        viewModel.showDeleteConfirmation = true
+                    }
+                }
+            }
+        } else {
+            DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
+                showMoreOptions = false
+                showReportSheet = true
             }
         }
     }
@@ -529,227 +438,8 @@ struct RecordDetailSheetView: View {
                 .foregroundColor(.secondary)
             
             Button("重試") {
-                Task {
-                    viewModel.loadRecord()
-                }
+                viewModel.loadRecord()
             }
-        }
-    }
-    
-    private var moreOptionsButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                showMoreOptions.toggle()
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .foregroundColor(.primary)
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
-        }
-        .buttonStyle(.plain)
-        .frame(width: 32, height: 32, alignment: .center)
-        .contentShape(Rectangle())
-        .anchorPreference(key: MoreOptionsButtonAnchorPreferenceKey.self, value: .bounds) {
-            $0
-        }
-    }
-    
-    private func moreOptionsOverlay(buttonFrame: CGRect) -> some View {
-        ZStack(alignment: .topLeading) {
-            Color.appOverlay.opacity(0.001)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showMoreOptions = false
-                    }
-                }
-            
-            moreOptionsFloatingMenu
-                .offset(x: max(12, buttonFrame.maxX - moreOptionsMenuWidth), y: buttonFrame.maxY + 10)
-                .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)))
-                .zIndex(100)
-        }
-    }
-    
-    private var moreOptionsFloatingMenu: some View {
-        VStack(spacing: 0) {
-            if viewModel.isOwner {
-                optionRow(title: "編輯", systemImage: "pencil") {
-                    showMoreOptions = false
-                    detailSheetRouter.openRecordEdit(
-                        id: viewModel.recordId,
-                        prefetchedRecord: viewModel.record
-                    )
-                }
-                optionDivider
-                optionRow(title: "刪除", systemImage: "trash", role: .destructive) {
-                    withAnimation(.easeInOut(duration: 0.12)) {
-                        showMoreOptions = false
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
-                            viewModel.showDeleteConfirmation = true
-                        }
-                    }
-                }
-            } else {
-                optionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
-                    showMoreOptions = false
-                    showReportSheet = true
-                }
-            }
-        }
-        .frame(width: 186)
-        .background(Color.appSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.systemGray5), lineWidth: 0.8)
-        )
-        .shadow(color: Color.appOverlay.opacity(0.12), radius: 10, x: 0, y: 3)
-    }
-    
-    private var deleteConfirmationOverlay: some View {
-        GeometryReader { proxy in
-            let popupWidth = min(max(proxy.size.width - 40, 260), 320)
-            
-            ZStack {
-                Color.appOverlay.opacity(0.18)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            viewModel.showDeleteConfirmation = false
-                        }
-                    }
-                
-                VStack(spacing: 0) {
-                    VStack(spacing: 10) {
-                        Text("確認刪除")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundColor(.primary)
-                        
-                        Text("確定要刪除此標點嗎？此動作無法復原")
-                            .font(.system(size: 16, weight: .regular, design: .rounded))
-                            .foregroundColor(.primary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 22)
-                    
-                    Divider()
-                    
-                    HStack(spacing: 0) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                viewModel.showDeleteConfirmation = false
-                            }
-                        } label: {
-                            Text("取消")
-                                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Divider()
-                        
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                viewModel.showDeleteConfirmation = false
-                            }
-                            Task {
-                                if await viewModel.deleteRecord() {
-                                    dismiss()
-                                }
-                            }
-                        } label: {
-                            Text("刪除")
-                                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                                .foregroundColor(.appDanger)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .frame(height: 54)
-                }
-                .frame(width: popupWidth)
-                .background(Color.appSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color(.systemGray5), lineWidth: 0.8)
-                )
-                .shadow(color: Color.appOverlay.opacity(0.15), radius: 14, x: 0, y: 5)
-                .padding(.horizontal, 20)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .transition(.scale(scale: 0.94).combined(with: .opacity))
-        .zIndex(200)
-    }
-    
-    private var optionDivider: some View {
-        Divider()
-            .padding(.leading, 14)
-    }
-    
-    private func optionRow(
-        title: String,
-        systemImage: String,
-        role: ButtonRole? = nil,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(role: role) {
-            action()
-        } label: {
-            HStack(spacing: 12) {
-                Text(title)
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .foregroundStyle(role == .destructive ? Color.appDanger : Color.primary)
-                
-                Spacer()
-                
-                Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: .regular))
-                    .foregroundStyle(role == .destructive ? Color.appDanger : Color.primary)
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 48)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-    
-    // MARK: - Helpers
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd HH:mm"
-        return formatter.string(from: date)
-    }
-    
-    private var currentUserAvatarURL: String? {
-        if let avatar = container.authService.currentUser?.avatarUrl,
-           !avatar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return avatar
-        }
-        return nil
-    }
-    
-    private func formatTimeAgo(_ date: Date) -> String {
-        let now = Date()
-        let diff = now.timeIntervalSince(date)
-        
-        if diff < 60 {
-            return "Now"
-        } else if diff < 3600 {
-            return "\(Int(diff / 60))m ago"
-        } else if diff < 86400 {
-            return "\(Int(diff / 3600))h ago"
-        } else {
-            return "\(Int(diff / 86400))d ago"
         }
     }
 }
@@ -760,6 +450,10 @@ struct ReplyRowView: View {
     let reply: Reply
     var onAuthorTap: ((String) -> Void)? = nil
     var onLikeToggle: ((String) -> Void)? = nil
+    var onImageTapForFullScreen: ((_ images: [ImageMedia], _ index: Int) -> Void)? = nil
+    @Environment(\.displayScale) private var displayScale
+    private let replyImageWidth: CGFloat = 96
+    private let replyImageHeight: CGFloat = 96 * 375 / 260
     
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -775,36 +469,48 @@ struct ReplyRowView: View {
                     .foregroundColor(.primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .lineSpacing(3)
-                
-                HStack(spacing: 12) {
-                    Text(formatTimeAgo(reply.createdAt))
-                        .font(.system(size: 12, weight: .regular, design: .rounded))
-                        .foregroundColor(.secondary)
-                    
-                    if reply.likeCount > 0 {
-                        Text("\(reply.likeCount)個讚")
-                            .font(.system(size: 12, weight: .regular, design: .rounded))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
+
                 if let images = reply.images, !images.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach(images) { image in
-                                KFImage(URL(string: image.thumbnailPublicUrl))
+                            ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
+                                KFImage(URL(string: image.originalPublicUrl))
                                     .placeholder {
                                         Rectangle().fill(Color(.systemGray5))
                                     }
                                     .retry(maxCount: 2, interval: .seconds(1))
+                                    .setProcessor(
+                                        DownsamplingImageProcessor(
+                                            size: CGSize(
+                                                width: replyImageWidth * displayScale,
+                                                height: replyImageHeight * displayScale
+                                            )
+                                        )
+                                    )
+                                    .scaleFactor(displayScale)
                                     .cacheOriginalImage()
                                     .fade(duration: 0.2)
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(width: 60, height: 60)
+                                    .frame(width: replyImageWidth, height: replyImageHeight)
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .onTapGesture {
+                                        onImageTapForFullScreen?(images, index)
+                                    }
                             }
                         }
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    Text(formatTimeAgo(reply.createdAt))
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundColor(.secondary)
+
+                    if reply.likeCount > 0 {
+                        Text("\(reply.likeCount)個讚")
+                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                            .foregroundColor(.secondary)
                     }
                 }
             }
@@ -885,7 +591,7 @@ struct ReplyRowView: View {
     }
 }
 
-private struct MoreOptionsButtonAnchorPreferenceKey: PreferenceKey {
+struct MoreOptionsButtonAnchorPreferenceKey: PreferenceKey {
     static var defaultValue: Anchor<CGRect>? = nil
     
     static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {

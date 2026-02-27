@@ -22,10 +22,28 @@ struct AskDetailSheetView: View {
     @EnvironmentObject var container: DIContainer
     @StateObject private var viewModel: AskDetailViewModel
 
-    @State private var showDeleteConfirmation = false
     @State private var showEditSheet = false
-    @State private var showReplySheet = false
     @State private var showReportSheet = false
+    @State private var showMoreOptions = false
+    @State private var showDeleteConfirmation = false
+    @State private var replyText = ""
+    @State private var isHeartAnimating = false
+    @State private var isDescriptionExpanded = false
+    @State private var hasStartedInitialLoad = false
+    @State private var keepBackButtonVisibleDuringDismiss = false
+
+    // Fullscreen Image Viewer
+    @State private var showFullScreenImage = false
+    @State private var fullScreenImages: [ImageMedia] = []
+    @State private var fullScreenImageIndex: Int = 0
+    @State private var scrolledImageId: String?
+
+    private let questionFont = Font.system(size: 16, weight: .regular, design: .rounded)
+    private let imageCardWidth: CGFloat = 300
+    private let imageCardHeight: CGFloat = 375
+    private let moreOptionsMenuWidth: CGFloat = 186
+    private let contentTopPaddingWithoutBackButton: CGFloat = 10
+    private let contentTopPaddingWithBackButton: CGFloat = 2
 
     init(askId: String, askRepository: AskRepository, replyRepository: ReplyRepository) {
         self.askId = askId
@@ -40,256 +58,335 @@ struct AskDetailSheetView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 拖曳指示條
-            SheetTopHandle(bottomPadding: 10)
-
-            NavigationView {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if viewModel.isLoading {
-                            AskDetailSkeleton()
-                        } else if let ask = viewModel.ask {
-                            askContent(ask)
-                        } else if let error = viewModel.errorMessage {
-                            errorView(error)
-                        } else {
-                            // Fallback: 確保不會有空白狀態
-                            AskDetailSkeleton()
+        BottomSheetScaffold(
+            showsTopBar: shouldShowBackButton,
+            topBarBottomPadding: shouldShowBackButton ? 0 : BottomSheetLayoutMetrics.topBarBottomPadding,
+            leading: {
+                leadingBackButton
+            },
+            title: {
+                EmptyView()
+            },
+            trailing: {
+                EmptyView()
+            },
+            content: {
+                ZStack {
+                    if viewModel.isLoading {
+                        AskDetailSkeleton()
+                            .padding(.horizontal, 16)
+                            .padding(.top, contentTopPadding)
+                    } else if let ask = viewModel.ask {
+                        VStack(spacing: 0) {
+                            contentView(ask: ask)
+                            Divider()
+                            DetailReplyInputBar(
+                                replyText: $replyText,
+                                isSubmitting: viewModel.isSubmittingReply,
+                                currentUserAvatarURL: DetailSheetHelpers.currentUserAvatarURL(from: container.authService),
+                                onSubmit: { submitReply() }
+                            )
                         }
-                    }
-                    .padding()
-                }
-                .navigationTitle("詢問詳情")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Menu {
-                            // 作者可編輯/刪除/標記已解決
-                            if viewModel.ask?.userId == viewModel.currentUserId {
-                                Button {
-                                    showEditSheet = true
-                                } label: {
-                                    Label("編輯", systemImage: "pencil")
-                                }
-
-                                Button(role: .destructive) {
-                                    showDeleteConfirmation = true
-                                } label: {
-                                    Label("刪除", systemImage: "trash")
-                                }
-
-                                if viewModel.ask?.status == .active {
-                                    Button {
-                                        Task { await viewModel.resolveAsk() }
-                                    } label: {
-                                        Label("標記為已解決", systemImage: "checkmark.circle")
-                                    }
-                                }
-                            } else {
-                                // 非作者可檢舉
-                                Button(role: .destructive) {
-                                    showReportSheet = true
-                                } label: {
-                                    Label("檢舉", systemImage: "flag")
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                        }
+                    } else if let error = viewModel.errorMessage {
+                        errorView(error)
+                    } else {
+                        AskDetailSkeleton()
+                            .padding(.horizontal, 16)
+                            .padding(.top, contentTopPadding)
                     }
                 }
-                .alert("確定刪除？", isPresented: $showDeleteConfirmation) {
-                    Button("取消", role: .cancel) {}
-                    Button("刪除", role: .destructive) {
+            }
+        )
+        .background(Color.appSurface)
+        .overlayPreferenceValue(AskMoreOptionsButtonAnchorPreferenceKey.self) { anchor in
+            GeometryReader { proxy in
+                if showMoreOptions, let anchor {
+                    let buttonFrame = proxy[anchor]
+                    DetailMoreOptionsOverlay(
+                        buttonFrame: buttonFrame,
+                        menuWidth: moreOptionsMenuWidth,
+                        onDismiss: { showMoreOptions = false }
+                    ) {
+                        moreOptionsMenuContent
+                    }
+                }
+            }
+        }
+        .overlay {
+            if showDeleteConfirmation {
+                DetailDeleteConfirmation(
+                    isPresented: $showDeleteConfirmation,
+                    onDelete: {
                         Task {
-                            await viewModel.deleteAsk()
-                            dismiss()
+                            if await viewModel.deleteAsk() {
+                                dismiss()
+                            }
                         }
                     }
-                } message: {
-                    Text("確定要刪除此詢問嗎？此動作無法復原。")
-                }
-                .sheet(isPresented: $showReplySheet) {
-                    ReplyCreateView(
-                        recordId: nil,
-                        askId: askId,
-                        onReplyCreated: {
-                            Task { await viewModel.loadReplies() }
-                        }
-                    )
-                    .environmentObject(DIContainer())
-                }
-                .sheet(isPresented: $showReportSheet) {
-                    ReportSheetView(
-                        target: .ask(id: askId),
-                        apiClient: container.apiClient
-                    )
-                }
+                )
             }
-            .task {
-                await viewModel.loadAsk()
+        }
+        .sheet(isPresented: $showEditSheet) {
+            if let ask = viewModel.ask {
+                EditAskView(
+                    askId: askId,
+                    ask: ask,
+                    uploadService: container.uploadService,
+                    askRepository: askRepository,
+                    onComplete: {
+                        Task { await viewModel.loadAsk() }
+                    }
+                )
+            } else {
+                EmptyView()
             }
-        }  // VStack
+        }
+        .sheet(isPresented: $showReportSheet) {
+            ReportSheetView(
+                target: .ask(id: askId),
+                apiClient: container.apiClient
+            )
+        }
+        .task {
+            guard !hasStartedInitialLoad else { return }
+            hasStartedInitialLoad = true
+            await viewModel.loadAsk()
+        }
+        .fullScreenImageViewer(
+            isPresented: $showFullScreenImage,
+            images: fullScreenImages,
+            initialIndex: fullScreenImageIndex
+        )
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
-    // MARK: - Ask Content
-
-    @ViewBuilder
-    private func askContent(_ ask: Ask) -> some View {
-        // 問題
-        VStack(alignment: .leading, spacing: 12) {
-            Text(ask.question)
-                .font(.title3.weight(.medium))
-
-            // 範圍資訊
-            HStack(spacing: 8) {
-                Image(systemName: "scope")
-                    .foregroundColor(.brandOrange)
-                Text("詢問範圍：\(ask.radiusMeters)m")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Spacer()
-
-                // 在地圖上查看按鈕
-                Button {
-                    dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        navigationCoordinator.navigateToMap(
-                            coordinate: ask.center.clLocationCoordinate, mapMode: .ask)
-                    }
-                } label: {
-                    Label("在地圖上查看", systemImage: "map")
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(.brandOrange)
-                }
-
-                if ask.status == .resolved {
-                    Label("已解決", systemImage: "checkmark.circle.fill")
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(.appSuccess)
-                }
-            }
+    private var shouldShowBackButton: Bool {
+        if keepBackButtonVisibleDuringDismiss {
+            return true
         }
 
-        // 附圖
-        if let images = ask.images, !images.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(images) { image in
-                        KFImage(URL(string: image.thumbnailPublicUrl ?? ""))
-                            .placeholder {
-                                Rectangle()
-                                    .fill(Color.appDisabled.opacity(0.2))
-                                    .frame(width: 100, height: 100)
-                                    .cornerRadius(8)
-                            }
-                            .retry(maxCount: 2, interval: .seconds(1))
-                            .cacheOriginalImage()
-                            .fade(duration: 0.2)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 100, height: 100)
-                            .clipped()
-                            .cornerRadius(8)
-                    }
-                }
-            }
+        guard case .ask(let currentRouteAskId) = detailSheetRouter.path.last else {
+            return false
         }
 
-        Divider()
+        return currentRouteAskId == askId
+    }
 
-        // 作者資訊
-        if let author = ask.author {
-            Button {
-                detailSheetRouter.open(.userProfile(id: author.id))
-            } label: {
-                HStack(spacing: 12) {
-                    KFImage(URL(string: author.avatarUrl ?? ""))
-                        .placeholder {
-                            Circle()
-                                .fill(Color.appDisabled.opacity(0.3))
-                                .frame(width: 40, height: 40)
+    private var leadingBackButton: some View {
+        Button {
+            keepBackButtonVisibleDuringDismiss = true
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var contentTopPadding: CGFloat {
+        shouldShowBackButton ? contentTopPaddingWithBackButton : contentTopPaddingWithoutBackButton
+    }
+
+    private var trimmedReplyText: String {
+        replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func submitReply() {
+        let trimmed = trimmedReplyText
+        guard !trimmed.isEmpty, !viewModel.isSubmittingReply else { return }
+        Task {
+            let success = await viewModel.createReply(content: trimmed)
+            if success {
+                await MainActor.run { replyText = "" }
+            }
+        }
+    }
+
+    // MARK: - Content View
+
+    private func contentView(ask: Ask) -> some View {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    askBodySection(ask: ask)
+                        .frame(minHeight: proxy.size.height * 0.82, alignment: .top)
+
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    DetailRepliesSection(
+                        replies: viewModel.replies,
+                        isLoadingReplies: viewModel.isLoadingReplies,
+                        onAuthorTap: { userId in
+                            detailSheetRouter.open(.userProfile(id: userId))
+                        },
+                        onLikeToggle: { replyId in
+                            Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                        },
+                        onImageTapForFullScreen: { images, index in
+                            fullScreenImages = images
+                            fullScreenImageIndex = index
+                            showFullScreenImage = true
                         }
-                        .retry(maxCount: 2, interval: .seconds(1))
-                        .cacheOriginalImage()
-                        .fade(duration: 0.2)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 40, height: 40)
-                        .clipShape(Circle())
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
+                }
+                .padding(.top, contentTopPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(author.displayName)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundColor(.primary)
+    private func askBodySection(ask: Ask) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 1. 用戶資訊列
+            if let author = ask.author {
+                DetailAuthorHeaderView(
+                    author: author,
+                    createdAt: ask.createdAt,
+                    anchorKey: AskMoreOptionsButtonAnchorPreferenceKey.self,
+                    onBackTap: { dismiss() },
+                    onAvatarTap: { detailSheetRouter.open(.userProfile(id: author.id)) },
+                    showMoreOptions: $showMoreOptions
+                )
+            }
 
-                        Text(formatDate(ask.createdAt))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+            // 2. 圖片輪播
+            if let images = ask.images, !images.isEmpty {
+                DetailImageCarouselView(
+                    images: images,
+                    initialImageIndex: 0,
+                    cardWidth: imageCardWidth,
+                    cardHeight: imageCardHeight,
+                    scrolledImageId: $scrolledImageId,
+                    onImageTap: { imgs, index in
+                        fullScreenImages = imgs
+                        fullScreenImageIndex = index
+                        showFullScreenImage = true
                     }
+                )
+
+                // 圖片 metadata
+                DetailImageMetaRowView(
+                    image: currentVisibleImage(in: images),
+                    scrolledImageId: scrolledImageId,
+                    onLocationTap: { image in
+                        if let coordinate = image.clLocationCoordinate {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                navigationCoordinator.navigateToMap(coordinate: coordinate, mapMode: .ask)
+                            }
+                        }
+                    }
+                )
+                .padding(.top, 14)
+            }
+
+            let hasImages = !(ask.images?.isEmpty ?? true)
+            VStack(alignment: .leading, spacing: 14) {
+                // 3. 內容描述（有圖片才顯示分隔線）
+                if hasImages { Divider() }
+                DetailDescriptionSection(
+                    description: ask.question,
+                    isExpanded: $isDescriptionExpanded,
+                    font: questionFont
+                )
+
+                // 4. 詢問範圍 + 地圖按鈕 + 已解決標籤
+                HStack(spacing: 8) {
+                    Image(systemName: "scope")
+                        .foregroundColor(.brandOrange)
+                    Text("詢問範圍：\(ask.radiusMeters)m")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
 
                     Spacer()
 
-                    // 愛心按鈕
-                    LikeButtonLarge(
-                        count: ask.likeCount,
-                        isLiked: ask.userHasLiked ?? false,
-                        action: {
-                            Task { await viewModel.toggleLike() }
+                    Button {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            navigationCoordinator.navigateToMap(
+                                coordinate: ask.center.clLocationCoordinate,
+                                mapMode: .ask
+                            )
                         }
-                    )
+                    } label: {
+                        Label("在地圖上查看", systemImage: "map")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.brandOrange)
+                    }
+
+                    if ask.status == .resolved {
+                        Label("已解決", systemImage: "checkmark.circle.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.appSuccess)
+                    }
                 }
+
+                DetailInteractionRow(
+                    isLiked: viewModel.ask?.userHasLiked ?? false,
+                    likeCount: viewModel.ask?.likeCount ?? 0,
+                    replyCount: viewModel.replies.count,
+                    onLikeTap: { Task { await viewModel.toggleLike() } },
+                    isHeartAnimating: $isHeartAnimating
+                )
             }
-            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 16)
+            .padding(.top, hasImages ? 12 : 4)
+            .padding(.bottom, 10)
         }
-
-        Divider()
-
-        // 回覆區
-        repliesSection
     }
 
-    // MARK: - Replies Section
+    private func currentVisibleImage(in images: [ImageMedia]) -> ImageMedia {
+        if let scrolledId = scrolledImageId,
+           let image = images.first(where: { $0.id == scrolledId }) {
+            return image
+        }
+        return images.first!
+    }
 
-    private var repliesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("回覆")
-                    .font(.headline)
+    // MARK: - More Options Menu Content
 
-                Spacer()
+    @ViewBuilder
+    private var moreOptionsMenuContent: some View {
+        if viewModel.isOwner {
+            DetailOptionRow(title: "編輯", systemImage: "pencil") {
+                showMoreOptions = false
+                showEditSheet = true
+            }
 
-                Button {
-                    showReplySheet = true
-                } label: {
-                    Label("新增回覆", systemImage: "plus")
-                        .font(.subheadline)
+            if viewModel.ask?.status == .active {
+                DetailOptionDivider()
+                DetailOptionRow(title: "標記為已解決", systemImage: "checkmark.circle") {
+                    showMoreOptions = false
+                    Task { await viewModel.resolveAsk() }
                 }
             }
 
-            if viewModel.isLoadingReplies {
-                ForEach(0..<2, id: \.self) { _ in
-                    ReplyRowSkeleton()
+            DetailOptionDivider()
+            DetailOptionRow(title: "刪除", systemImage: "trash", role: .destructive) {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    showMoreOptions = false
                 }
-            } else if viewModel.replies.isEmpty {
-                Text("目前沒有回覆")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-            } else {
-                ForEach(viewModel.replies) { reply in
-                    ReplyRowView(reply: reply) { replyId in
-                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                        showDeleteConfirmation = true
                     }
                 }
             }
+        } else {
+            DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
+                showMoreOptions = false
+                showReportSheet = true
+            }
         }
     }
 
-    // MARK: - Error View
+    // MARK: - Supporting Views
 
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
@@ -307,14 +404,6 @@ struct AskDetailSheetView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 200)
     }
-
-    // MARK: - Helpers
-
-    private func formatDate(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
-    }
 }
 
 // MARK: - View Model
@@ -325,13 +414,19 @@ class AskDetailViewModel: ObservableObject {
     @Published var replies: [Reply] = []
     @Published var isLoading = true
     @Published var isLoadingReplies = false
+    @Published var isSubmittingReply = false
     @Published var errorMessage: String?
 
     let askId: String
-    
-    /// 當前使用者 ID（從 AuthService 取得）
+
     var currentUserId: String? {
-        return AuthService.shared.currentUserId
+        AuthService.shared.currentUserId
+    }
+
+    var isOwner: Bool {
+        guard let ask else { return false }
+        guard let currentUserId else { return false }
+        return ask.userId == currentUserId
     }
 
     private let askRepository: AskRepository
@@ -350,8 +445,6 @@ class AskDetailViewModel: ObservableObject {
         do {
             ask = try await askRepository.getAskDetail(id: askId)
             isLoading = false
-
-            // 載入回覆
             await loadReplies()
         } catch {
             errorMessage = error.localizedDescription
@@ -371,13 +464,36 @@ class AskDetailViewModel: ObservableObject {
         isLoadingReplies = false
     }
 
+    func createReply(content: String) async -> Bool {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContent.isEmpty else { return false }
+
+        isSubmittingReply = true
+        errorMessage = nil
+
+        do {
+            let reply = try await replyRepository.createReplyForAsk(
+                askId: askId,
+                content: trimmedContent,
+                images: nil,
+                currentLocation: nil
+            )
+            replies.append(reply)
+            isSubmittingReply = false
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            isSubmittingReply = false
+            return false
+        }
+    }
+
     func toggleLike() async {
         guard var currentAsk = ask else { return }
 
         let wasLiked = currentAsk.userHasLiked ?? false
         let previousLikeCount = currentAsk.likeCount
 
-        // 樂觀更新
         currentAsk.userHasLiked = !wasLiked
         currentAsk = Ask(
             id: currentAsk.id,
@@ -399,7 +515,6 @@ class AskDetailViewModel: ObservableObject {
 
         do {
             let response = try await replyRepository.toggleLikeForAsk(id: askId)
-            // 用伺服器回傳的計數更新
             if var updatedAsk = ask {
                 updatedAsk = Ask(
                     id: updatedAsk.id,
@@ -420,7 +535,6 @@ class AskDetailViewModel: ObservableObject {
                 ask = updatedAsk
             }
         } catch {
-            // 回滾
             ask = Ask(
                 id: currentAsk.id,
                 userId: currentAsk.userId,
@@ -443,18 +557,24 @@ class AskDetailViewModel: ObservableObject {
     func resolveAsk() async {
         do {
             _ = try await askRepository.updateAsk(
-                id: askId, question: nil, status: .resolved, sortedImages: nil)
+                id: askId,
+                question: nil,
+                status: .resolved,
+                sortedImages: nil
+            )
             await loadAsk()
         } catch {
             errorMessage = "無法更新狀態"
         }
     }
 
-    func deleteAsk() async {
+    func deleteAsk() async -> Bool {
         do {
             try await askRepository.deleteAsk(id: askId)
+            return true
         } catch {
             errorMessage = "刪除失敗"
+            return false
         }
     }
 
@@ -464,7 +584,6 @@ class AskDetailViewModel: ObservableObject {
         let wasLiked = replies[index].userHasLiked ?? false
         let previousCount = replies[index].likeCount
 
-        // 樂觀更新
         replies[index] = Reply(
             id: replies[index].id,
             recordId: replies[index].recordId,
@@ -497,7 +616,6 @@ class AskDetailViewModel: ObservableObject {
                 )
             }
         } catch {
-            // 回滾
             if let idx = replies.firstIndex(where: { $0.id == replyId }) {
                 replies[idx] = Reply(
                     id: replies[idx].id,
@@ -514,5 +632,13 @@ class AskDetailViewModel: ObservableObject {
                 )
             }
         }
+    }
+}
+
+struct AskMoreOptionsButtonAnchorPreferenceKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
     }
 }
