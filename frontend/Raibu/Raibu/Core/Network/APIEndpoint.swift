@@ -15,14 +15,14 @@ enum APIEndpoint {
     
     // MARK: - 紀錄模組 (Module B)
     case createRecord
-    case getMapRecords(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double)
+    case getMapRecords(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double, startDate: Date? = nil, endDate: Date? = nil)
     case getRecordDetail(id: String)
     case updateRecord(id: String)
     case deleteRecord(id: String)
     
     // MARK: - 詢問模組 (Module C)
     case createAsk
-    case getMapAsks(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double)
+    case getMapAsks(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double, startDate: Date? = nil, endDate: Date? = nil)
     case getAskDetail(id: String)
     case updateAsk(id: String)
     case deleteAsk(id: String)
@@ -141,21 +141,35 @@ enum APIEndpoint {
     
     private var queryItems: [URLQueryItem]? {
         switch self {
-        case .getMapRecords(let minLat, let maxLat, let minLng, let maxLng):
-            return [
+        case .getMapRecords(let minLat, let maxLat, let minLng, let maxLng, let startDate, let endDate):
+            var items = [
                 URLQueryItem(name: "min_lat", value: String(minLat)),
                 URLQueryItem(name: "max_lat", value: String(maxLat)),
                 URLQueryItem(name: "min_lng", value: String(minLng)),
                 URLQueryItem(name: "max_lng", value: String(maxLng))
             ]
+            if let startDate = startDate {
+                items.append(URLQueryItem(name: "start_date", value: ISO8601DateFormatter().string(from: startDate)))
+            }
+            if let endDate = endDate {
+                items.append(URLQueryItem(name: "end_date", value: ISO8601DateFormatter().string(from: endDate)))
+            }
+            return items
             
-        case .getMapAsks(let minLat, let maxLat, let minLng, let maxLng):
-            return [
+        case .getMapAsks(let minLat, let maxLat, let minLng, let maxLng, let startDate, let endDate):
+            var items = [
                 URLQueryItem(name: "min_lat", value: String(minLat)),
                 URLQueryItem(name: "max_lat", value: String(maxLat)),
                 URLQueryItem(name: "min_lng", value: String(minLng)),
                 URLQueryItem(name: "max_lng", value: String(maxLng))
             ]
+            if let startDate = startDate {
+                items.append(URLQueryItem(name: "start_date", value: ISO8601DateFormatter().string(from: startDate)))
+            }
+            if let endDate = endDate {
+                items.append(URLQueryItem(name: "end_date", value: ISO8601DateFormatter().string(from: endDate)))
+            }
+            return items
             
         case .getReplies(let recordId, let askId):
             if let recordId = recordId {

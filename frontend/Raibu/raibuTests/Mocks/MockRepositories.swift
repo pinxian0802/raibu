@@ -49,7 +49,7 @@ class MockRecordRepository: RecordRepositoryProtocol {
         )
     }
     
-    func getMapRecords(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double) async throws -> [MapRecordImage] {
+    func getMapRecords(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double, startDate: Date?, endDate: Date?) async throws -> [MapRecordImage] {
         getMapRecordsCalled = true
         
         if shouldThrowError { throw errorToThrow }
@@ -152,7 +152,7 @@ class MockAskRepository: AskRepositoryProtocol {
         )
     }
     
-    func getMapAsks(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double) async throws -> [MapAsk] {
+    func getMapAsks(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double, startDate: Date?, endDate: Date?) async throws -> [MapAsk] {
         getMapAsksCalled = true
         
         if shouldThrowError { throw errorToThrow }

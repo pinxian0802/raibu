@@ -22,6 +22,7 @@ class MapViewModel: ObservableObject {
     
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var timeFilter: MapTimeFilter = .threeMonths
     
     // 詳細視窗
     @Published var selectedRecordId: String?
@@ -83,6 +84,14 @@ class MapViewModel: ObservableObject {
     func switchMode(to mode: MapMode) {
         currentMode = mode
         updateClusters()
+        Task {
+            await fetchDataForCurrentRegion()
+        }
+    }
+    
+    /// 切換時間篩選
+    func switchTimeFilter(to filter: MapTimeFilter) {
+        timeFilter = filter
         Task {
             await fetchDataForCurrentRegion()
         }
@@ -243,18 +252,20 @@ class MapViewModel: ObservableObject {
                     minLat: bounds.minLat,
                     maxLat: bounds.maxLat,
                     minLng: bounds.minLng,
-                    maxLng: bounds.maxLng
+                    maxLng: bounds.maxLng,
+                    startDate: timeFilter.startDate,
+                    endDate: timeFilter.endDate
                 )
                 
             case .ask:
-                let allAsks = try await askRepository.getMapAsks(
+                asks = try await askRepository.getMapAsks(
                     minLat: bounds.minLat,
                     maxLat: bounds.maxLat,
                     minLng: bounds.minLng,
-                    maxLng: bounds.maxLng
+                    maxLng: bounds.maxLng,
+                    startDate: timeFilter.startDate,
+                    endDate: timeFilter.endDate
                 )
-                // 過濾：僅顯示 48 小時內的詢問標點 (PRD 規定)
-                asks = allAsks.filter { $0.isWithin48Hours }
             }
             
             // 記錄已載入的區域

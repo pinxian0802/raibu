@@ -39,10 +39,12 @@ class AskRepository: AskRepositoryProtocol {
         minLat: Double,
         maxLat: Double,
         minLng: Double,
-        maxLng: Double
+        maxLng: Double,
+        startDate: Date? = nil,
+        endDate: Date? = nil
     ) async throws -> [MapAsk] {
         let response: MapAsksResponse = try await apiClient.get(
-            .getMapAsks(minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng)
+            .getMapAsks(minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng, startDate: startDate, endDate: endDate)
         )
         return response.asks
     }

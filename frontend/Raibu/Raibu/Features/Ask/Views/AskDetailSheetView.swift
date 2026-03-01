@@ -73,9 +73,10 @@ struct AskDetailSheetView: View {
             content: {
                 ZStack {
                     if viewModel.isLoading {
-                        AskDetailSkeleton()
-                            .padding(.horizontal, 16)
-                            .padding(.top, contentTopPadding)
+                        DetailSheetSkeleton(
+                            showImageCarousel: true,
+                            contentTopPadding: contentTopPadding
+                        )
                     } else if let ask = viewModel.ask {
                         VStack(spacing: 0) {
                             contentView(ask: ask)
@@ -90,9 +91,10 @@ struct AskDetailSheetView: View {
                     } else if let error = viewModel.errorMessage {
                         errorView(error)
                     } else {
-                        AskDetailSkeleton()
-                            .padding(.horizontal, 16)
-                            .padding(.top, contentTopPadding)
+                        DetailSheetSkeleton(
+                            showImageCarousel: true,
+                            contentTopPadding: contentTopPadding
+                        )
                     }
                 }
             }
@@ -207,37 +209,34 @@ struct AskDetailSheetView: View {
     // MARK: - Content View
 
     private func contentView(ask: Ask) -> some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    askBodySection(ask: ask)
-                        .frame(minHeight: proxy.size.height * 0.82, alignment: .top)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                askBodySection(ask: ask)
 
-                    Divider()
-                        .padding(.horizontal, 16)
-
-                    DetailRepliesSection(
-                        replies: viewModel.replies,
-                        isLoadingReplies: viewModel.isLoadingReplies,
-                        onAuthorTap: { userId in
-                            detailSheetRouter.open(.userProfile(id: userId))
-                        },
-                        onLikeToggle: { replyId in
-                            Task { await viewModel.toggleReplyLike(replyId: replyId) }
-                        },
-                        onImageTapForFullScreen: { images, index in
-                            fullScreenImages = images
-                            fullScreenImageIndex = index
-                            showFullScreenImage = true
-                        }
-                    )
+                Divider()
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
-                }
-                .padding(.top, contentTopPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                DetailRepliesSection(
+                    replies: viewModel.replies,
+                    isLoadingReplies: viewModel.isLoadingReplies,
+                    onAuthorTap: { userId in
+                        detailSheetRouter.open(.userProfile(id: userId))
+                    },
+                    onLikeToggle: { replyId in
+                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                    },
+                    onImageTapForFullScreen: { images, index in
+                        fullScreenImages = images
+                        fullScreenImageIndex = index
+                        showFullScreenImage = true
+                    }
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
             }
+            .padding(.top, contentTopPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -443,9 +442,14 @@ class AskDetailViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            ask = try await askRepository.getAskDetail(id: askId)
+            async let loadedAsk = askRepository.getAskDetail(id: askId)
+            async let loadedReplies = replyRepository.getRepliesForAsk(askId: askId)
+
+            let (fetchedAsk, fetchedReplies) = try await (loadedAsk, loadedReplies)
+
+            ask = fetchedAsk
+            replies = fetchedReplies
             isLoading = false
-            await loadReplies()
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false

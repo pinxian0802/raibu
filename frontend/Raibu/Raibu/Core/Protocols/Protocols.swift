@@ -15,7 +15,7 @@ import Photos
 /// 紀錄 Repository 協議
 protocol RecordRepositoryProtocol {
     func createRecord(description: String, images: [UploadedImage]) async throws -> Record
-    func getMapRecords(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double) async throws -> [MapRecordImage]
+    func getMapRecords(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double, startDate: Date?, endDate: Date?) async throws -> [MapRecordImage]
     func getRecordDetail(id: String) async throws -> Record
     func updateRecord(id: String, description: String?, sortedImages: [SortedImageItem]) async throws -> Record
     func deleteRecord(id: String) async throws
@@ -24,7 +24,7 @@ protocol RecordRepositoryProtocol {
 /// 詢問 Repository 協議
 protocol AskRepositoryProtocol {
     func createAsk(center: Coordinate, radiusMeters: Int, question: String, images: [UploadedImage]?) async throws -> Ask
-    func getMapAsks(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double) async throws -> [MapAsk]
+    func getMapAsks(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double, startDate: Date?, endDate: Date?) async throws -> [MapAsk]
     func getAskDetail(id: String) async throws -> Ask
     func updateAsk(id: String, question: String?, status: AskStatus?, sortedImages: [SortedImageItem]?) async throws
     func deleteAsk(id: String) async throws

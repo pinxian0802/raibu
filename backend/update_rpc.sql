@@ -1,11 +1,13 @@
--- Update get_record_images_in_bounds to include created_at (mapped from uploaded_at)
--- This is required for sorting images by date in the cluster bottom sheet.
+-- Update get_record_images_in_bounds to support optional time filtering
+-- Parameters p_start_date and p_end_date are optional (NULL = no filter)
 
 CREATE OR REPLACE FUNCTION get_record_images_in_bounds(
   p_min_lng FLOAT,
   p_min_lat FLOAT,
   p_max_lng FLOAT,
-  p_max_lat FLOAT
+  p_max_lat FLOAT,
+  p_start_date TIMESTAMPTZ DEFAULT NULL,
+  p_end_date TIMESTAMPTZ DEFAULT NULL
 )
 RETURNS TABLE (
   image_id UUID,
@@ -33,6 +35,48 @@ BEGIN
   WHERE
     im.status = 'COMPLETED'
     AND im.record_id IS NOT NULL
-    AND im.location && ST_MakeEnvelope(p_min_lng, p_min_lat, p_max_lng, p_max_lat, 4326);
+    AND im.location && ST_MakeEnvelope(p_min_lng, p_min_lat, p_max_lng, p_max_lat, 4326)
+    AND (p_start_date IS NULL OR im.uploaded_at >= p_start_date)
+    AND (p_end_date IS NULL OR im.uploaded_at <= p_end_date);
+END;
+$$;
+
+-- Update get_asks_in_bounds to support optional time filtering
+-- Removes hardcoded 48-hour filter; time range is now controlled by caller
+
+CREATE OR REPLACE FUNCTION get_asks_in_bounds(
+  p_min_lng FLOAT,
+  p_min_lat FLOAT,
+  p_max_lng FLOAT,
+  p_max_lat FLOAT,
+  p_start_date TIMESTAMPTZ DEFAULT NULL,
+  p_end_date TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS TABLE (
+  id UUID,
+  lng FLOAT,
+  lat FLOAT,
+  radius_meters INTEGER,
+  question TEXT,
+  status TEXT,
+  created_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    a.id,
+    ST_X(a.center::geometry) AS lng,
+    ST_Y(a.center::geometry) AS lat,
+    a.radius_meters,
+    a.question,
+    a.status,
+    a.created_at
+  FROM asks a
+  WHERE
+    a.center && ST_MakeEnvelope(p_min_lng, p_min_lat, p_max_lng, p_max_lat, 4326)
+    AND (p_start_date IS NULL OR a.created_at >= p_start_date)
+    AND (p_end_date IS NULL OR a.created_at <= p_end_date);
 END;
 $$;

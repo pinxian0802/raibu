@@ -44,19 +44,23 @@ class RecordService {
 
   /**
    * 取得地圖範圍內的紀錄圖片
-   * @param {Object} bounds - { minLat, maxLat, minLng, maxLng }
+   * @param {Object} bounds - { minLat, maxLat, minLng, maxLng, startDate, endDate }
    * @returns {Promise<Array>} 圖片陣列
    */
   async getMapRecords(bounds) {
-    const { minLat, maxLat, minLng, maxLng } = bounds;
+    const { minLat, maxLat, minLng, maxLng, startDate, endDate } = bounds;
 
     // 使用 RPC 進行空間查詢
-    const { data, error } = await supabase.rpc('get_record_images_in_bounds', {
+    const rpcParams = {
       p_min_lng: parseFloat(minLng),
       p_min_lat: parseFloat(minLat),
       p_max_lng: parseFloat(maxLng),
       p_max_lat: parseFloat(maxLat),
-    });
+    };
+    if (startDate) rpcParams.p_start_date = startDate;
+    if (endDate) rpcParams.p_end_date = endDate;
+
+    const { data, error } = await supabase.rpc('get_record_images_in_bounds', rpcParams);
 
     if (error) {
       // 如果 RPC 不存在，使用基本查詢

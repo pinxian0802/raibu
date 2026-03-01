@@ -72,6 +72,8 @@ const recordSchemas = {
     max_lat: Joi.number().min(-90).max(90).required(),
     min_lng: Joi.number().min(-180).max(180).required(),
     max_lng: Joi.number().min(-180).max(180).required(),
+    start_date: Joi.string().isoDate().allow(null),
+    end_date: Joi.string().isoDate().allow(null),
   }),
 };
 

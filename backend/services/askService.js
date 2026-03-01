@@ -63,28 +63,30 @@ class AskService {
 
   /**
    * 取得地圖範圍內的詢問標點
-   * @param {Object} bounds - { minLat, maxLat, minLng, maxLng }
+   * @param {Object} bounds - { minLat, maxLat, minLng, maxLng, startDate, endDate }
    * @returns {Promise<Array>} 詢問陣列
    */
   async getMapAsks(bounds) {
-    const { minLat, maxLat, minLng, maxLng } = bounds;
+    const { minLat, maxLat, minLng, maxLng, startDate, endDate } = bounds;
 
-    // 使用 RPC 進行空間查詢 + 48 小時過濾
-    const { data, error } = await supabase.rpc('get_asks_in_bounds', {
+    // 使用 RPC 進行空間查詢（時間過濾由呼叫端控制）
+    const rpcParams = {
       p_min_lng: parseFloat(minLng),
       p_min_lat: parseFloat(minLat),
       p_max_lng: parseFloat(maxLng),
       p_max_lat: parseFloat(maxLat),
-    });
+    };
+    if (startDate) rpcParams.p_start_date = startDate;
+    if (endDate) rpcParams.p_end_date = endDate;
+
+    const { data, error } = await supabase.rpc('get_asks_in_bounds', rpcParams);
 
     if (error) {
       console.warn('RPC not available, using basic query');
-      const cutoffTime = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
       const { data: asks, error: queryError } = await supabase
         .from('asks')
         .select('id, question, radius_meters, status, created_at')
-        .gte('created_at', cutoffTime)
         .order('created_at', { ascending: false });
 
       if (queryError) throw Errors.internal('查詢失敗');

@@ -32,10 +32,12 @@ class RecordRepository: RecordRepositoryProtocol {
         minLat: Double,
         maxLat: Double,
         minLng: Double,
-        maxLng: Double
+        maxLng: Double,
+        startDate: Date? = nil,
+        endDate: Date? = nil
     ) async throws -> [MapRecordImage] {
         let response: MapRecordsResponse = try await apiClient.get(
-            .getMapRecords(minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng)
+            .getMapRecords(minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng, startDate: startDate, endDate: endDate)
         )
         return response.images
     }

@@ -32,11 +32,12 @@ struct CreateRecordFullView: View {
 
     var body: some View {
         BottomSheetScaffold(
+            topBarBottomPadding: 12,
             leading: {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark")
+                    Image(systemName: "chevron.left")
                         .font(.system(size: 18, weight: .semibold))
                 }
                 .foregroundColor(Color(uiColor: .systemIndigo).opacity(0.8))

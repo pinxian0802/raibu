@@ -21,7 +21,6 @@ struct RecordDetailSheetView: View {
     @State private var replyText = ""
     @State private var isDescriptionExpanded = false
     @State private var isHeartAnimating = false
-    @State private var isLoadingPulseActive = false
     @State private var hasStartedInitialLoad = false
     @State private var keepBackButtonVisibleDuringDismiss = false
     
@@ -175,37 +174,34 @@ struct RecordDetailSheetView: View {
     // MARK: - Content View
     
     private func contentView(record: Record) -> some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    recordBodySection(record: record)
-                        .frame(minHeight: proxy.size.height * 0.82, alignment: .top)
-                    
-                    Divider()
-                        .padding(.horizontal, 16)
-                    
-                    DetailRepliesSection(
-                        replies: viewModel.replies,
-                        isLoadingReplies: false,
-                        onAuthorTap: { userId in
-                            detailSheetRouter.open(.userProfile(id: userId))
-                        },
-                        onLikeToggle: { replyId in
-                            Task { await viewModel.toggleReplyLike(replyId: replyId) }
-                        },
-                        onImageTapForFullScreen: { images, index in
-                            fullScreenImages = images
-                            fullScreenImageIndex = index
-                            showFullScreenImage = true
-                        }
-                    )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                recordBodySection(record: record)
+                
+                Divider()
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
-                }
-                .padding(.top, contentTopPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                DetailRepliesSection(
+                    replies: viewModel.replies,
+                    isLoadingReplies: false,
+                    onAuthorTap: { userId in
+                        detailSheetRouter.open(.userProfile(id: userId))
+                    },
+                    onLikeToggle: { replyId in
+                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                    },
+                    onImageTapForFullScreen: { images, index in
+                        fullScreenImages = images
+                        fullScreenImageIndex = index
+                        showFullScreenImage = true
+                    }
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
             }
+            .padding(.top, contentTopPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
     
@@ -331,103 +327,14 @@ struct RecordDetailSheetView: View {
     }
     
     // MARK: - Supporting Views
-    
+
     private var loadingView: some View {
-        GeometryReader { proxy in
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        loadingRecordBodySection
-                            .frame(minHeight: proxy.size.height * 0.82, alignment: .top)
-                    }
-                    .padding(.top, contentTopPadding)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .scrollDisabled(true)
-                
-                Divider()
-                loadingReplyInputBar
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-        }
-        .opacity(isLoadingPulseActive ? 0.84 : 1.0)
-        .onAppear {
-            guard !isLoadingPulseActive else { return }
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                isLoadingPulseActive = true
-            }
-        }
-        .onDisappear {
-            isLoadingPulseActive = false
-        }
+        DetailSheetSkeleton(
+            showImageCarousel: true,
+            contentTopPadding: contentTopPadding
+        )
     }
-    
-    private var loadingRecordBodySection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // 圖片輪播區
-            skeletonBox(height: 400, cornerRadius: 0)
-            
-            VStack(alignment: .leading, spacing: 16) {
-                loadingUserInfoRow
-                loadingDescriptionSection
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 18)
-            .padding(.bottom, 10)
-        }
-    }
-    
-    private var loadingUserInfoRow: some View {
-        HStack(alignment: .center, spacing: 12) {
-            skeletonCircle(size: 40)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                skeletonBox(width: 110, height: 16)
-                skeletonBox(width: 70, height: 12)
-            }
-            
-            Spacer()
-        }
-    }
-    
-    private var loadingDescriptionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            skeletonBox(height: 16)
-            skeletonBox(width: 260, height: 16)
-            skeletonBox(width: 180, height: 16)
-        }
-        .frame(minHeight: 70, alignment: .topLeading)
-    }
-    
-    private var loadingReplyInputBar: some View {
-        HStack(spacing: 12) {
-            skeletonCircle(size: 32)
-            
-            Capsule()
-                .fill(Color(.systemGray5))
-                .frame(height: 40)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.appSurface)
-    }
-    
-    private func skeletonBox(
-        width: CGFloat? = nil,
-        height: CGFloat,
-        cornerRadius: CGFloat = 4
-    ) -> some View {
-        RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(Color(.systemGray5))
-            .frame(width: width, height: height)
-    }
-    
-    private func skeletonCircle(size: CGFloat) -> some View {
-        Circle()
-            .fill(Color(.systemGray5))
-            .frame(width: size, height: size)
-    }
-    
+
     private func errorView(message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")

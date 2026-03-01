@@ -34,13 +34,15 @@ router.get(
   '/map',
   validateQuery(recordSchemas.mapQuery),
   asyncHandler(async (req, res) => {
-    const { min_lat, max_lat, min_lng, max_lng } = req.query;
+    const { min_lat, max_lat, min_lng, max_lng, start_date, end_date } = req.query;
 
     const images = await recordService.getMapRecords({
       minLat: min_lat,
       maxLat: max_lat,
       minLng: min_lng,
       maxLng: max_lng,
+      startDate: start_date,
+      endDate: end_date,
     });
 
     res.json({ images });

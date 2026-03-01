@@ -32,6 +32,7 @@ struct MapContentView: View {
     @State private var searchText = ""
     @State private var isSearchActive = false
     @State private var isSearchExpanded = false // 新增：控制搜尋欄展開狀態
+    @State private var isTimeFilterExpanded = false // 時間篩選列展開狀態
     @State private var createAskLocation: CreateAskLocation?
     @State private var searchLocation: SearchLocationMarker?
     @State private var hideMarkers = false
@@ -107,6 +108,14 @@ struct MapContentView: View {
                 navigationCoordinator.clearTarget()
             }
         }
+        .onChange(of: isSearchExpanded) { expanded in
+            // 搜尋欄展開時自動收起時間篩選列
+            if expanded && isTimeFilterExpanded {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    isTimeFilterExpanded = false
+                }
+            }
+        }
     }
 
     // MARK: - Map View
@@ -127,10 +136,21 @@ struct MapContentView: View {
             },
             onRegionChanged: { mapSize in
                 viewModel.onRegionChanged(viewModel.region, mapSize: mapSize)
+                // 拖動地圖時自動收起時間篩選列
+                if isTimeFilterExpanded {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        isTimeFilterExpanded = false
+                    }
+                }
             },
             onMapTapped: {
-                // 點擊地圖時關閉搜尋建議列表
+                // 點擊地圖時關閉搜尋建議列表和時間篩選
                 isSearchActive = false
+                if isTimeFilterExpanded {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        isTimeFilterExpanded = false
+                    }
+                }
             }
         )
         .ignoresSafeArea()
@@ -185,8 +205,8 @@ struct MapContentView: View {
 
     private var topControls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // 第一行：搜尋欄和模式切換按鈕（固定在頂部）
-            HStack(spacing: 12) {
+            // 第一行：搜尋欄、時間篩選按鈕、模式切換
+            HStack(spacing: 8) {
                 // 搜尋欄（建議列表會浮在上層，不影響佈局）
                 MapSearchBar(
                     searchText: $searchText,
@@ -212,7 +232,7 @@ struct MapContentView: View {
                 // 搜尋展開時填滿剩餘空間
                 .frame(maxWidth: isSearchExpanded ? .infinity : nil)
                 
-                // 模式切換按鈕（固定位置）
+                // 模式切換按鈕
                 if isSearchExpanded {
                     modeSwitcherCompact
                         .transition(.scale.combined(with: .opacity))
@@ -221,16 +241,35 @@ struct MapContentView: View {
                         .transition(.scale.combined(with: .opacity))
                 }
                 
-                // 只有收合時才需要 Spacer（展開時搜尋欄會填滿）
+                // 時間篩選觸發按鈕（搜尋展開時隱藏）
                 if !isSearchExpanded {
-                    Spacer()
+                    MapTimeFilterToggle(
+                        currentFilter: viewModel.timeFilter,
+                        currentMode: viewModel.currentMode,
+                        isExpanded: $isTimeFilterExpanded
+                    )
+                    .transition(.scale.combined(with: .opacity))
                 }
+                
+                Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSearchExpanded)
 
-            // 第二行：隱藏標點按鈕（建議列表展開時不顯示）
+            // 第二行：時間篩選 Chip 列（展開時顯示）
+            if isTimeFilterExpanded && !isSearchActive {
+                MapTimeFilterChipBar(
+                    selectedFilter: $viewModel.timeFilter,
+                    currentMode: viewModel.currentMode,
+                    onFilterChanged: { filter in
+                        viewModel.switchTimeFilter(to: filter)
+                    }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // 隱藏標點按鈕（建議列表展開時不顯示）
             if searchLocation != nil && !isSearchActive {
                 HStack {
                     Button {
