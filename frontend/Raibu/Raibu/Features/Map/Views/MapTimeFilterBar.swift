@@ -70,7 +70,7 @@ struct MapTimeFilterToggle: View {
                 }
             }
             .foregroundColor(isExpanded ? .white : accentColor)
-            .frame(width: 90, height: 44)
+            .frame(width: 95, height: 44)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(isExpanded ? accentColor : Color(.systemBackground))

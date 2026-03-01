@@ -11,6 +11,9 @@ import SwiftUI
 /// MKMapView 的 SwiftUI 橋接
 /// 處理地圖顯示、標註管理、手勢識別
 struct MapViewRepresentable: UIViewRepresentable {
+    private let centerSyncThreshold: Double = 0.0001
+    private let spanSyncThreshold: Double = 0.0001
+
     @Binding var region: MKCoordinateRegion
     let clusters: [ClusterResult]
     let currentMode: MapMode
@@ -34,6 +37,8 @@ struct MapViewRepresentable: UIViewRepresentable {
             action: #selector(context.coordinator.handleLongPress(_:))
         )
         longPress.minimumPressDuration = 0.5
+        longPress.delegate = context.coordinator
+        longPress.cancelsTouchesInView = false
         mapView.addGestureRecognizer(longPress)
 
         // 點擊手勢（用於關閉搜尋建議）
@@ -42,18 +47,30 @@ struct MapViewRepresentable: UIViewRepresentable {
             action: #selector(context.coordinator.handleTap(_:))
         )
         tapGesture.delegate = context.coordinator
+        tapGesture.cancelsTouchesInView = false
         mapView.addGestureRecognizer(tapGesture)
 
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        context.coordinator.parent = self
+
         // 更新 region
         let currentRegion = mapView.region
-        if abs(currentRegion.center.latitude - region.center.latitude) > 0.0001
-            || abs(currentRegion.center.longitude - region.center.longitude) > 0.0001
+        let latDiff = abs(currentRegion.center.latitude - region.center.latitude)
+        let lngDiff = abs(currentRegion.center.longitude - region.center.longitude)
+        let spanLatDiff = abs(currentRegion.span.latitudeDelta - region.span.latitudeDelta)
+        let spanLngDiff = abs(currentRegion.span.longitudeDelta - region.span.longitudeDelta)
+
+        let shouldSyncCenter = latDiff > centerSyncThreshold || lngDiff > centerSyncThreshold
+        let shouldSyncSpan = spanLatDiff > spanSyncThreshold || spanLngDiff > spanSyncThreshold
+        let hasSignificantRegionDiff = shouldSyncCenter || shouldSyncSpan
+        let shouldAnimateRegionChange = context.transaction.animation != nil
+
+        if hasSignificantRegionDiff && !context.coordinator.isUserInteractingWithMap
         {
-            mapView.setRegion(region, animated: true)
+            mapView.setRegion(region, animated: shouldAnimateRegionChange)
         }
 
         // 更新搜尋位置標記
@@ -152,6 +169,7 @@ struct MapViewRepresentable: UIViewRepresentable {
     class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var parent: MapViewRepresentable
         var animatingAnnotations: Set<String> = []
+        var isUserInteractingWithMap = false
 
         init(_ parent: MapViewRepresentable) {
             self.parent = parent
@@ -171,13 +189,36 @@ struct MapViewRepresentable: UIViewRepresentable {
             parent.onLongPress(coordinate)
         }
 
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            isUserInteractingWithMap = isRegionChangeTriggeredByUserInteraction(mapView)
+        }
+
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            isUserInteractingWithMap = false
+
             // 使用 DispatchQueue.main.async 延遲更新，避免在 SwiftUI view 更新過程中觸發狀態變更
             // 這解決了 "Publishing changes from within view updates is not allowed" 的錯誤
             DispatchQueue.main.async {
                 self.parent.region = mapView.region
                 self.parent.onRegionChanged(mapView.bounds.size)
             }
+        }
+
+        private func isRegionChangeTriggeredByUserInteraction(_ mapView: MKMapView) -> Bool {
+            let mapGestures = mapView.gestureRecognizers ?? []
+            let subviewGestures = mapView.subviews.flatMap { $0.gestureRecognizers ?? [] }
+            let allGestures = mapGestures + subviewGestures
+
+            return allGestures.contains { recognizer in
+                recognizer.state == .began || recognizer.state == .changed
+            }
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
         }
 
         func mapView(_ mapView: MKMapView, didAdd views: [MKAnnotationView]) {
