@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 /// 主 Tab 導航視圖
 struct MainTabView: View {
@@ -15,6 +16,7 @@ struct MainTabView: View {
     @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @State private var showCreateRecord = false
     @State private var previousTab: Int = 0
+    @State private var isWaitingForUserLocationToCreateAsk = false
     
     // 保持頁面狀態的標記
     @State private var hasLoadedMap = false
@@ -48,7 +50,7 @@ struct MainTabView: View {
                     set: { newValue in
                         if newValue == 1 {
                             // 點擊「新增」Tab：不切換，直接開啟 sheet
-                            showCreateRecord = true
+                            handleCreateTapped()
                         } else {
                             // 正常切換，並記錄為 previousTab
                             previousTab = newValue
@@ -57,7 +59,7 @@ struct MainTabView: View {
                     }
                 ),
                 onCreateTapped: {
-                    showCreateRecord = true
+                    handleCreateTapped()
                 }
             )
         }
@@ -67,7 +69,36 @@ struct MainTabView: View {
                 recordRepository: container.recordRepository
             )
         }
+        .onReceive(container.locationManager.$currentLocation) { location in
+            guard isWaitingForUserLocationToCreateAsk,
+                  let coordinate = location?.coordinate else {
+                return
+            }
+            
+            isWaitingForUserLocationToCreateAsk = false
+            navigationCoordinator.createAskLocation = CreateAskLocation(coordinate: coordinate)
+        }
+        .onReceive(container.locationManager.$locationError) { error in
+            guard isWaitingForUserLocationToCreateAsk, error != nil else {
+                return
+            }
+            isWaitingForUserLocationToCreateAsk = false
+        }
         .withGlobalDetailSheetHost()
+    }
+    
+    private func handleCreateTapped() {
+        switch navigationCoordinator.currentMapMode {
+        case .record:
+            showCreateRecord = true
+        case .ask:
+            if let userCoordinate = container.locationManager.currentLocation?.coordinate {
+                navigationCoordinator.createAskLocation = CreateAskLocation(coordinate: userCoordinate)
+            } else {
+                isWaitingForUserLocationToCreateAsk = true
+                container.locationManager.requestLocation()
+            }
+        }
     }
 }
 

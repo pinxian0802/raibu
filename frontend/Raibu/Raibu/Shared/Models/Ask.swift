@@ -100,6 +100,28 @@ struct MapAsk: Codable, Identifiable {
     let question: String
     let status: AskStatus
     let createdAt: Date
+    let likeCount: Int?
+    let viewCount: Int?
+
+    init(
+        id: String,
+        center: Coordinate,
+        radiusMeters: Int,
+        question: String,
+        status: AskStatus,
+        createdAt: Date,
+        likeCount: Int? = nil,
+        viewCount: Int? = nil
+    ) {
+        self.id = id
+        self.center = center
+        self.radiusMeters = radiusMeters
+        self.question = question
+        self.status = status
+        self.createdAt = createdAt
+        self.likeCount = likeCount
+        self.viewCount = viewCount
+    }
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -108,6 +130,8 @@ struct MapAsk: Codable, Identifiable {
         case question
         case status
         case createdAt = "created_at"
+        case likeCount = "like_count"
+        case viewCount = "view_count"
     }
     
     /// 檢查是否在 48 小時內 (前端顯示規則)

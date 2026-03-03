@@ -77,20 +77,23 @@ struct CreateAskFullView: View {
                 .buttonStyle(.plain)
             },
             content: {
-                VStack(spacing: 0) {
-                    composerSection
+                ScrollView {
+                    VStack(spacing: 0) {
+                        composerSection
 
-                    Divider()
-                        .padding(.horizontal, 24)
+                        Divider()
+                            .padding(.horizontal, 24)
 
-                    mapAndRadiusSection
+                        mapAndRadiusSection
 
-                    Divider()
-                        .padding(.horizontal, 24)
+                        Divider()
+                            .padding(.horizontal, 24)
 
-                    attachmentsSection
-                    photoActionBar
+                        attachmentsSection
+                    }
                 }
+
+                photoActionBar
             }
         )
         .background(Color.appSurface)
@@ -144,7 +147,7 @@ struct CreateAskFullView: View {
                     .scrollContentBackground(.hidden)
                     .focused($isQuestionFocused)
                     .textInputAutocapitalization(.sentences)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
                     .padding(.horizontal, -5)
 
                 if viewModel.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -157,7 +160,7 @@ struct CreateAskFullView: View {
             }
         }
         .padding(.horizontal, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
     }
 
     // MARK: - Avatar

@@ -33,7 +33,6 @@ struct MapContentView: View {
     @State private var isSearchActive = false
     @State private var isSearchExpanded = false // 新增：控制搜尋欄展開狀態
     @State private var isTimeFilterExpanded = false // 時間篩選列展開狀態
-    @State private var createAskLocation: CreateAskLocation?
     @State private var searchLocation: SearchLocationMarker?
     @State private var hideMarkers = false
 
@@ -73,14 +72,13 @@ struct MapContentView: View {
             .environmentObject(navigationCoordinator)
             .environmentObject(container)
         }
-        .sheet(
-            item: $createAskLocation,
-            onDismiss: {
-                // 刷新地圖資料以顯示新建立的詢問
-                Task {
-                    await viewModel.fetchDataForCurrentRegion()
-                }
-            }
+        .sheet(item: $navigationCoordinator.createAskLocation,
+               onDismiss: {
+                   // 刷新地圖資料以顯示新建立的詢問
+                   Task {
+                       await viewModel.fetchDataForCurrentRegion()
+                   }
+               }
         ) { location in
             CreateAskFullView(
                 initialLocation: location.coordinate,
@@ -90,6 +88,13 @@ struct MapContentView: View {
             .environmentObject(container)
         }
         .toastContainer(toastManager)
+        .onAppear {
+            navigationCoordinator.currentMapMode = viewModel.currentMode
+            navigationCoordinator.currentMapCenter = Coordinate(from: viewModel.region.center)
+        }
+        .onChange(of: viewModel.currentMode) { newMode in
+            navigationCoordinator.currentMapMode = newMode
+        }
         .onChange(of: navigationCoordinator.targetCoordinate) { newCoordinate in
             // 回應導航協調器的跳轉請求
             if let coordinate = newCoordinate {
@@ -105,6 +110,7 @@ struct MapContentView: View {
                         span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
                     )
                 }
+                navigationCoordinator.currentMapCenter = coordinate
                 navigationCoordinator.clearTarget()
             }
         }
@@ -131,11 +137,12 @@ struct MapContentView: View {
             },
             onLongPress: { coordinate in
                 if viewModel.currentMode == .ask {
-                    createAskLocation = CreateAskLocation(coordinate: coordinate)
+                    navigationCoordinator.createAskLocation = CreateAskLocation(coordinate: coordinate)
                 }
             },
             onRegionChanged: { mapSize in
                 viewModel.onRegionChanged(viewModel.region, mapSize: mapSize)
+                navigationCoordinator.currentMapCenter = Coordinate(from: viewModel.region.center)
                 // 拖動地圖時自動收起時間篩選列
                 if isTimeFilterExpanded {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
@@ -476,9 +483,13 @@ struct CompactModeSwitchButtonStyle: ButtonStyle {
 // MARK: - Supporting Types
 
 /// 建立詢問位置
-struct CreateAskLocation: Identifiable {
+struct CreateAskLocation: Identifiable, Equatable {
     let id = UUID()
     let coordinate: CLLocationCoordinate2D
+
+    static func == (lhs: CreateAskLocation, rhs: CreateAskLocation) -> Bool {
+        lhs.id == rhs.id
+    }
 }
 
 /// 群集 Sheet 資料

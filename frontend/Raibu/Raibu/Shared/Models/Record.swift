@@ -96,6 +96,30 @@ struct MapRecordImage: Codable, Identifiable {
     let lng: Double
     let displayOrder: Int
     let createdAt: Date? // Optional, as older RPC might not return it
+    let likeCount: Int?
+    let viewCount: Int?
+
+    init(
+        imageId: String,
+        recordId: String,
+        thumbnailPublicUrl: String,
+        lat: Double,
+        lng: Double,
+        displayOrder: Int,
+        createdAt: Date?,
+        likeCount: Int? = nil,
+        viewCount: Int? = nil
+    ) {
+        self.imageId = imageId
+        self.recordId = recordId
+        self.thumbnailPublicUrl = thumbnailPublicUrl
+        self.lat = lat
+        self.lng = lng
+        self.displayOrder = displayOrder
+        self.createdAt = createdAt
+        self.likeCount = likeCount
+        self.viewCount = viewCount
+    }
     
     var id: String { imageId }
     
@@ -111,6 +135,8 @@ struct MapRecordImage: Codable, Identifiable {
         case lng
         case displayOrder = "display_order"
         case createdAt = "created_at"
+        case likeCount = "like_count"
+        case viewCount = "view_count"
     }
 }
 

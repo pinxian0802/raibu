@@ -15,12 +15,21 @@ class NavigationCoordinator: ObservableObject {
     /// 當前選中的 tab
     @Published var selectedTab: Int = 0
     
+    /// 當前地圖模式（供全域新增按鈕判斷要開哪種建立流程）
+    @Published var currentMapMode: MapMode = .record
+    
+    /// 當前地圖中心點（供詢問模式從 tabbar 新增時作為預設位置）
+    @Published var currentMapCenter: Coordinate = Coordinate(lat: 25.033, lng: 121.565)
+    
     /// 要跳轉到的座標（當設定時，地圖會移動到此位置）
     /// 使用 Coordinate 而非 CLLocationCoordinate2D，因為需要 Equatable
     @Published var targetCoordinate: Coordinate?
     
     /// 要切換到的地圖模式（當設定時，地圖會切換到此模式）
     @Published var targetMapMode: MapMode?
+    
+    /// 新增詢問標點的位置（長按地圖觸發，由 MainTabView 承接 sheet）
+    @Published var createAskLocation: CreateAskLocation?
     
     /// 跳轉到地圖並移動到指定座標
     /// - Parameters:
