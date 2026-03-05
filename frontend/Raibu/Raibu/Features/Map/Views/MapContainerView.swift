@@ -65,6 +65,7 @@ struct MapContentView: View {
         .sheet(item: $clusterSheetData) { data in
             ClusterGridSheetView(
                 items: data.items,
+                mapSpanLatitudeDelta: data.mapSpanLatitudeDelta,
                 recordRepository: container.recordRepository,
                 askRepository: container.askRepository,
                 replyRepository: container.replyRepository
@@ -192,7 +193,10 @@ struct MapContentView: View {
             if items.count == 1 {
                 handleSingleItemTap(items[0])
             } else {
-                clusterSheetData = ClusterSheetData(items: items)
+                clusterSheetData = ClusterSheetData(
+                    items: items,
+                    mapSpanLatitudeDelta: viewModel.region.span.latitudeDelta
+                )
             }
         }
     }
@@ -496,6 +500,7 @@ struct CreateAskLocation: Identifiable, Equatable {
 struct ClusterSheetData: Identifiable {
     let id = UUID()
     let items: [ClusterItem]
+    let mapSpanLatitudeDelta: Double
 }
 
 // MARK: - Preview

@@ -11,11 +11,16 @@ import Kingfisher
 /// 群集 Sheet 視圖 - 使用 NavigationStack 管理內部導航
 struct ClusterGridSheetView: View {
     let items: [ClusterItem]
+    let mapSpanLatitudeDelta: Double
     let recordRepository: RecordRepository
     let askRepository: AskRepository
     let replyRepository: ReplyRepository
     
+    @Environment(\.dismiss) private var dismiss
     @State private var navigationPath = NavigationPath()
+    @State private var isResolvingLocationTitle = true
+    @State private var locationPrimaryTitle = "重疊標點"
+    @State private var locationSecondaryTitle: String? = nil
     @State private var selectedSortOption: ClusterSortOption = .latest
     @State private var showSortMenu = false
     @State private var randomRanksByItemId: [String: Int] = [:]
@@ -68,15 +73,11 @@ struct ClusterGridSheetView: View {
     var body: some View {
         VStack(spacing: 0) {
             SheetTopHandle(topPadding: 8, bottomPadding: 4)
+            locationTitleView
 
             NavigationStack(path: $navigationPath) {
                 gridContent
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .principal) {
-                            sortDropdownButton
-                        }
-                    }
+                    .navigationBarHidden(true)
                     .navigationDestination(for: ClusterDetailDestination.self) { destination in
                         detailView(for: destination)
                     }
@@ -124,6 +125,9 @@ struct ClusterGridSheetView: View {
             if newValue == .random {
                 regenerateRandomRanks()
             }
+        }
+        .task(id: locationTitleTaskID) {
+            await resolveLocationTitle()
         }
     }
     
@@ -276,6 +280,68 @@ struct ClusterGridSheetView: View {
 
     // MARK: - Sort Menu
 
+    private var locationTitleView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 返回按鈕（sheet 最左上角）
+            backButton
+                .padding(.leading, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 30)
+
+            // 地點標題 + 排序按鈕
+            if isResolvingLocationTitle {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("定位中")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 14)
+            } else {
+                // 地點標題：大字 primary + 小字 secondary 行
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(locationPrimaryTitle)
+                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.primary)
+                        .lineLimit(1)
+
+                    HStack(alignment: .firstTextBaseline) {
+                        if let locationSecondaryTitle {
+                            Text(locationSecondaryTitle)
+                                .font(.system(size: 15, weight: .regular, design: .rounded))
+                                .foregroundStyle(Color.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 4)
+
+                        sortDropdownButton
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 14)
+            }
+
+            Divider()
+                .padding(.horizontal, 16)
+        }
+        .animation(.easeInOut(duration: 0.2), value: isResolvingLocationTitle)
+    }
+
+    private var backButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var sortDropdownButton: some View {
         Button {
             if showSortMenu {
@@ -419,6 +485,25 @@ struct ClusterGridSheetView: View {
         let idealX = buttonFrame.midX - (sortMenuWidth / 2)
         let maxX = max(horizontalPadding, containerWidth - sortMenuWidth - horizontalPadding)
         return min(max(idealX, horizontalPadding), maxX)
+    }
+
+    private var locationTitleTaskID: String {
+        items.map(\.id).sorted().joined(separator: "|")
+    }
+
+    private func resolveLocationTitle() async {
+        isResolvingLocationTitle = true
+        let coordinates = items.map(\.coordinate)
+        let resolved = await ClusterLocationTitleService.shared.buildTitleParts(
+            for: coordinates,
+            mapSpanLatitudeDelta: mapSpanLatitudeDelta
+        )
+
+        if Task.isCancelled { return }
+
+        locationPrimaryTitle = resolved.primary
+        locationSecondaryTitle = resolved.secondary
+        isResolvingLocationTitle = false
     }
 
     private func openSortMenu() {
