@@ -259,9 +259,16 @@ struct ClusterGridSheetView: View {
                 }
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("詢問標點")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(.primary)
+                    if let title = ask.title, !title.isEmpty {
+                        Text(title)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                    } else {
+                        Text("詢問標點")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.primary)
+                    }
                     
                     Text(ask.question)
                         .font(.caption)

@@ -78,7 +78,6 @@ struct CreateRecordFullView: View {
                         .padding(.horizontal, 24)
 
                     attachmentsSection
-                    photoActionBar
                 }
             }
         )
@@ -205,18 +204,18 @@ struct CreateRecordFullView: View {
                 HStack(spacing: 8) {
                     Text("最多可選取 10 張照片")
                         .font(.custom("PingFangTC-Medium", size: 13))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black)
 
                     Spacer()
 
-                    Text("\(viewModel.photoCount)/10 張")
-                        .font(metaFont)
+                    addPhotoButton
                 }
 
                 if viewModel.selectedPhotos.isEmpty {
                     emptyPhotosHintView
                 } else {
                     selectedPhotosView
+                        .padding(.top, 8)
                 }
             }
             .padding(.horizontal, 20)
@@ -234,15 +233,25 @@ struct CreateRecordFullView: View {
     }
 
     private var selectedPhotosView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(Array(viewModel.selectedPhotos.enumerated()), id: \.element.id) { index, photo in
-                    photoThumbnail(photo: photo, index: index)
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(viewModel.selectedPhotos.enumerated()), id: \.element.id) { index, photo in
+                        photoThumbnail(photo: photo, index: index)
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 2)
+            .padding(.horizontal, -20)
+            .frame(height: 176)
+
+            Text("\(viewModel.photoCount)/10 張")
+                .font(metaFont)
+                .foregroundColor(.secondary)
+                .padding(.leading, 2)
         }
-        .frame(height: 184)
+        .frame(height: 184, alignment: .bottomLeading)
     }
 
     private func photoThumbnail(photo: SelectedPhoto, index: Int) -> some View {
@@ -281,39 +290,17 @@ struct CreateRecordFullView: View {
         }
     }
 
-    // MARK: - Photo Action
-
-    private var photoActionBar: some View {
-        VStack(spacing: 8) {
-            Button {
-                showPhotoPicker = true
-            } label: {
-                HStack(spacing: 0) {
-                    Text("新增圖片")
-                }
-                .font(.custom("PingFangTC-Semibold", size: 17))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 17)
-                .background(viewModel.photoCount < 10 && !viewModel.isUploading ? Color.brandBlue : Color.appDisabled)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(viewModel.photoCount >= 10 || viewModel.isUploading)
-
-            if viewModel.photoCount >= 10 {
-                Text("已達 10 張照片上限")
-                    .font(.custom("PingFangTC-Medium", size: 12))
-                    .foregroundColor(.secondary)
-            }
+    private var addPhotoButton: some View {
+        Button {
+            showPhotoPicker = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(viewModel.photoCount < 10 && !viewModel.isUploading ? .black : .secondary)
+                .frame(width: 28, height: 28, alignment: .center)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 14)
-        .background(
-            Color.appSurface
-                .shadow(color: Color.appOverlay.opacity(0.08), radius: 12, x: 0, y: -4)
-        )
+        .buttonStyle(.plain)
+        .disabled(viewModel.photoCount >= 10 || viewModel.isUploading)
     }
 }
 

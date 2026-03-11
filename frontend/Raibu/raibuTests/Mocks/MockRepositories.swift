@@ -132,7 +132,7 @@ class MockAskRepository: AskRepositoryProtocol {
     var updateAskCalled = false
     var deleteAskCalled = false
     
-    func createAsk(center: Coordinate, radiusMeters: Int, question: String, images: [UploadedImage]?) async throws -> Ask {
+    func createAsk(center: Coordinate, radiusMeters: Int, title: String?, question: String, images: [UploadedImage]?) async throws -> Ask {
         createAskCalled = true
         
         if shouldThrowError { throw errorToThrow }
@@ -142,6 +142,7 @@ class MockAskRepository: AskRepositoryProtocol {
             userId: "mock-user-id",
             center: center,
             radiusMeters: radiusMeters,
+            title: title,
             question: question,
             mainImageUrl: nil,
             status: .active,
@@ -170,6 +171,7 @@ class MockAskRepository: AskRepositoryProtocol {
             userId: "mock-user-id",
             center: Coordinate(lat: 25.033, lng: 121.565),
             radiusMeters: 500,
+            title: nil,
             question: "Mock question",
             mainImageUrl: nil,
             status: .active,
@@ -180,7 +182,7 @@ class MockAskRepository: AskRepositoryProtocol {
         )
     }
     
-    func updateAsk(id: String, question: String?, status: AskStatus?, sortedImages: [SortedImageItem]?) async throws {
+    func updateAsk(id: String, title: String?, question: String?, status: AskStatus?, sortedImages: [SortedImageItem]?) async throws {
         updateAskCalled = true
         
         if shouldThrowError { throw errorToThrow }

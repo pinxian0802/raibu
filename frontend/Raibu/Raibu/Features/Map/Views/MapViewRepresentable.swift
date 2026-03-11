@@ -27,6 +27,8 @@ struct MapViewRepresentable: UIViewRepresentable {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
+        mapView.mapType = .mutedStandard
+        mapView.overrideUserInterfaceStyle = .light
 
         // 顯示景點標記（POI）
         mapView.pointOfInterestFilter = .includingAll
@@ -287,7 +289,9 @@ struct MapViewRepresentable: UIViewRepresentable {
             // 設定圖示
             if cluster.isSingle {
                 if case .ask = cluster.items[0] {
-                    annotationView?.image = MapIconFactory.createAskIcon()
+                    if case .ask(let ask) = cluster.items[0] {
+                        loadAskIcon(for: annotationView, ask: ask)
+                    }
                 } else if case .recordImage(let image) = cluster.items[0] {
                     loadThumbnail(
                         for: annotationView, urlString: image.thumbnailPublicUrl, badgeCount: nil)
@@ -361,6 +365,54 @@ struct MapViewRepresentable: UIViewRepresentable {
                     } else {
                         annotationView?.centerOffset = .zero
                     }
+                }
+            }.resume()
+        }
+
+        private func loadAskIcon(for annotationView: MKAnnotationView?, ask: MapAsk) {
+            let title = ask.title
+            let imageUrl = ask.mainImageUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let avatarUrl = ask.authorAvatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedUrl = (imageUrl?.isEmpty == false ? imageUrl : avatarUrl)
+            let cacheKey = "ask_icon_\(ask.id)_\(resolvedUrl ?? "nil")_\(title ?? "")" as NSString
+
+            if let cachedImage = MapIconFactory.imageCache.object(forKey: cacheKey) {
+                annotationView?.image = cachedImage
+                annotationView?.bounds = CGRect(origin: .zero, size: cachedImage.size)
+                annotationView?.centerOffset = MapIconFactory.askIconCenterOffset(title: title)
+                return
+            }
+
+            guard let urlString = resolvedUrl, let url = URL(string: urlString) else {
+                let icon = MapIconFactory.createAskIcon(title: title, image: nil)
+                MapIconFactory.imageCache.setObject(icon, forKey: cacheKey)
+                annotationView?.image = icon
+                annotationView?.bounds = CGRect(origin: .zero, size: icon.size)
+                annotationView?.centerOffset = MapIconFactory.askIconCenterOffset(title: title)
+                return
+            }
+
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
+
+            URLSession.shared.dataTask(with: request) { [weak annotationView] data, _, _ in
+                guard let data = data, let image = UIImage(data: data) else {
+                    let fallback = MapIconFactory.createAskIcon(title: title, image: nil)
+                    MapIconFactory.imageCache.setObject(fallback, forKey: cacheKey)
+                    DispatchQueue.main.async {
+                        annotationView?.image = fallback
+                        annotationView?.bounds = CGRect(origin: .zero, size: fallback.size)
+                        annotationView?.centerOffset = MapIconFactory.askIconCenterOffset(title: title)
+                    }
+                    return
+                }
+
+                let icon = MapIconFactory.createAskIcon(title: title, image: image)
+                MapIconFactory.imageCache.setObject(icon, forKey: cacheKey)
+                DispatchQueue.main.async {
+                    annotationView?.image = icon
+                    annotationView?.bounds = CGRect(origin: .zero, size: icon.size)
+                    annotationView?.centerOffset = MapIconFactory.askIconCenterOffset(title: title)
                 }
             }.resume()
         }

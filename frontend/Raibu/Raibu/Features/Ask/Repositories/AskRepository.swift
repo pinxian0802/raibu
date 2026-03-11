@@ -21,12 +21,14 @@ class AskRepository: AskRepositoryProtocol {
     func createAsk(
         center: Coordinate,
         radiusMeters: Int,
+        title: String?,
         question: String,
         images: [UploadedImage]?
     ) async throws -> Ask {
         let request = CreateAskRequest(
             center: center,
             radiusMeters: radiusMeters,
+            title: title,
             question: question,
             images: images?.map { $0.toCreateRequest() }
         )
@@ -57,11 +59,13 @@ class AskRepository: AskRepositoryProtocol {
     /// 編輯詢問
     func updateAsk(
         id: String,
+        title: String? = nil,
         question: String?,
         status: AskStatus?,
         sortedImages: [SortedImageItem]?
     ) async throws {
         let request = UpdateAskRequest(
+            title: title,
             question: question,
             status: status,
             sortedImages: sortedImages

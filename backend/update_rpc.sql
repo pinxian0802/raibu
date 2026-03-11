@@ -57,7 +57,10 @@ RETURNS TABLE (
   lng FLOAT,
   lat FLOAT,
   radius_meters INTEGER,
+  title TEXT,
   question TEXT,
+  main_image_url TEXT,
+  author_avatar_url TEXT,
   status TEXT,
   created_at TIMESTAMPTZ
 )
@@ -70,10 +73,14 @@ BEGIN
     ST_X(a.center::geometry) AS lng,
     ST_Y(a.center::geometry) AS lat,
     a.radius_meters,
+    a.title,
     a.question,
+    a.main_image_url,
+    u.avatar_url AS author_avatar_url,
     a.status,
     a.created_at
   FROM asks a
+  LEFT JOIN users u ON u.id = a.user_id
   WHERE
     a.center && ST_MakeEnvelope(p_min_lng, p_min_lat, p_max_lng, p_max_lat, 4326)
     AND (p_start_date IS NULL OR a.created_at >= p_start_date)

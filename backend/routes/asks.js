@@ -17,12 +17,13 @@ router.post('/',
   requireAuth, 
   validateBody(askSchemas.create),
   asyncHandler(async (req, res) => {
-    const { center, radius_meters, question, images } = req.body;
+    const { center, radius_meters, title, question, images } = req.body;
     const userId = req.user.id;
 
     const ask = await askService.createAsk(userId, {
       center,
       radiusMeters: radius_meters,
+      title,
       question,
       images,
     });
@@ -74,11 +75,12 @@ router.patch('/:id',
   validateBody(askSchemas.update),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { question, status, sorted_images } = req.body;
+    const { question, title, status, sorted_images } = req.body;
     const userId = req.user.id;
 
     const result = await askService.updateAsk(id, userId, {
       question,
+      title,
       status,
       sortedImages: sorted_images,
     });

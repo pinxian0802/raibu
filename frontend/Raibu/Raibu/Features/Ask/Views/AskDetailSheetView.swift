@@ -287,7 +287,14 @@ struct AskDetailSheetView: View {
 
             let hasImages = !(ask.images?.isEmpty ?? true)
             VStack(alignment: .leading, spacing: 14) {
-                // 3. 內容描述（有圖片才顯示分隔線）
+                // 3. 標題
+                if let title = ask.title, !title.isEmpty {
+                    Text(title)
+                        .font(.custom("PingFangTC-Semibold", size: 18))
+                        .foregroundColor(.primary)
+                }
+
+                // 4. 內容描述（有圖片才顯示分隔線）
                 if hasImages { Divider() }
                 DetailDescriptionSection(
                     description: ask.question,
@@ -295,7 +302,7 @@ struct AskDetailSheetView: View {
                     font: questionFont
                 )
 
-                // 4. 詢問範圍 + 地圖按鈕 + 已解決標籤
+                // 5. 詢問範圍 + 地圖按鈕 + 已解決標籤
                 HStack(spacing: 8) {
                     Image(systemName: "scope")
                         .foregroundColor(.brandOrange)
@@ -504,6 +511,7 @@ class AskDetailViewModel: ObservableObject {
             userId: currentAsk.userId,
             center: currentAsk.center,
             radiusMeters: currentAsk.radiusMeters,
+            title: currentAsk.title,
             question: currentAsk.question,
             mainImageUrl: currentAsk.mainImageUrl,
             status: currentAsk.status,
@@ -525,6 +533,7 @@ class AskDetailViewModel: ObservableObject {
                     userId: updatedAsk.userId,
                     center: updatedAsk.center,
                     radiusMeters: updatedAsk.radiusMeters,
+                    title: updatedAsk.title,
                     question: updatedAsk.question,
                     mainImageUrl: updatedAsk.mainImageUrl,
                     status: updatedAsk.status,
@@ -544,6 +553,7 @@ class AskDetailViewModel: ObservableObject {
                 userId: currentAsk.userId,
                 center: currentAsk.center,
                 radiusMeters: currentAsk.radiusMeters,
+                title: currentAsk.title,
                 question: currentAsk.question,
                 mainImageUrl: currentAsk.mainImageUrl,
                 status: currentAsk.status,

@@ -110,14 +110,11 @@ final class ClusterLocationTitleService {
 
         switch level {
         case .countries:
-            // 列出國家為 primary，城市列為 secondary
+            // 國家為 primary，城市列為 secondary
             let countryCounts = countNames(componentsList.compactMap(\.country))
-            let uniqueCountries = topNames(from: countryCounts, limit: 4)
-            let totalCountryCount = countryCounts.count
+            let dominantCountry = topNames(from: countryCounts, limit: 1).first
 
-            if uniqueCountries.count == 1 {
-                // 只有一個國家，往下列出城市
-                let country = uniqueCountries[0]
+            if let country = dominantCountry {
                 let totalCityCount = cityCounts.count
                 let uniqueCities = topNames(from: cityCounts, limit: 4)
                 if !uniqueCities.isEmpty {
@@ -129,19 +126,11 @@ final class ClusterLocationTitleService {
                 return LocationTitleParts(primary: country, secondary: nil)
             }
 
-            if !uniqueCountries.isEmpty {
-                return LocationTitleParts(
-                    primary: joinedWithEllipsis(uniqueCountries, totalCount: totalCountryCount),
-                    secondary: nil
-                )
-            }
-
         case .cities:
             let uniqueCities = topNames(from: cityCounts, limit: 4)
-            let totalCityCount = cityCounts.count
 
             if uniqueCities.count == 1 {
-                // 只有一個城市時，往下列出區
+                // 只有一個城市，往下列出區
                 let city = uniqueCities[0]
                 let districts = componentsList
                     .filter { $0.city == city }
@@ -161,11 +150,15 @@ final class ClusterLocationTitleService {
                 return LocationTitleParts(primary: city, secondary: nil)
             }
 
+            // 多個城市 → 往上升到國家層級：國家為 primary，城市為 secondary
             if !uniqueCities.isEmpty {
-                return LocationTitleParts(
-                    primary: joinedWithEllipsis(uniqueCities, totalCount: totalCityCount),
-                    secondary: nil
-                )
+                let countryCounts = countNames(componentsList.compactMap(\.country))
+                if let country = topNames(from: countryCounts, limit: 1).first {
+                    return LocationTitleParts(
+                        primary: country,
+                        secondary: joinedWithEllipsis(uniqueCities, totalCount: cityCounts.count)
+                    )
+                }
             }
 
         case .cityDistrict:

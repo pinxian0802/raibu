@@ -52,7 +52,7 @@ Features/Map/
 
 - `createThumbnailIcon(from:)` - 縮圖圖標
 - `createThumbnailWithBadge(from:count:)` - 帶數量的群集縮圖
-- `createAskIcon()` - 詢問標點圖標
+- `createAskIcon(title:image:)` - 詢問標點圖標（大頭貼 + 標題卡）
 - `createClusterIcon(count:mode:)` - 群集數字圖標
 - 圖片快取管理（限制 100 張 / 50MB）
 

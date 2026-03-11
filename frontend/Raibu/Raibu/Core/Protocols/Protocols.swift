@@ -23,10 +23,10 @@ protocol RecordRepositoryProtocol {
 
 /// 詢問 Repository 協議
 protocol AskRepositoryProtocol {
-    func createAsk(center: Coordinate, radiusMeters: Int, question: String, images: [UploadedImage]?) async throws -> Ask
+    func createAsk(center: Coordinate, radiusMeters: Int, title: String?, question: String, images: [UploadedImage]?) async throws -> Ask
     func getMapAsks(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double, startDate: Date?, endDate: Date?) async throws -> [MapAsk]
     func getAskDetail(id: String) async throws -> Ask
-    func updateAsk(id: String, question: String?, status: AskStatus?, sortedImages: [SortedImageItem]?) async throws
+    func updateAsk(id: String, title: String?, question: String?, status: AskStatus?, sortedImages: [SortedImageItem]?) async throws
     func deleteAsk(id: String) async throws
 }
 

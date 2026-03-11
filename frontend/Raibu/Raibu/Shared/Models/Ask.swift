@@ -19,6 +19,7 @@ struct Ask: Codable, Identifiable, Equatable {
     let userId: String
     let center: Coordinate
     let radiusMeters: Int
+    let title: String?
     let question: String
     let mainImageUrl: String?
     let status: AskStatus
@@ -37,6 +38,7 @@ struct Ask: Codable, Identifiable, Equatable {
         case userId = "user_id"
         case center
         case radiusMeters = "radius_meters"
+        case title
         case question
         case mainImageUrl = "main_image_url"
         case status
@@ -66,12 +68,14 @@ struct Ask: Codable, Identifiable, Equatable {
 struct CreateAskRequest: Codable {
     let center: Coordinate
     let radiusMeters: Int
+    let title: String?
     let question: String
     let images: [CreateImageRequest]?
     
     enum CodingKeys: String, CodingKey {
         case center
         case radiusMeters = "radius_meters"
+        case title
         case question
         case images
     }
@@ -79,11 +83,13 @@ struct CreateAskRequest: Codable {
 
 /// 編輯詢問請求
 struct UpdateAskRequest: Codable {
+    let title: String?
     let question: String?
     let status: AskStatus?
     let sortedImages: [SortedImageItem]?
     
     enum CodingKeys: String, CodingKey {
+        case title
         case question
         case status
         case sortedImages = "sorted_images"
@@ -97,7 +103,10 @@ struct MapAsk: Codable, Identifiable {
     let id: String
     let center: Coordinate
     let radiusMeters: Int
+    let title: String?
     let question: String
+    let mainImageUrl: String?
+    let authorAvatarUrl: String?
     let status: AskStatus
     let createdAt: Date
     let likeCount: Int?
@@ -107,7 +116,10 @@ struct MapAsk: Codable, Identifiable {
         id: String,
         center: Coordinate,
         radiusMeters: Int,
+        title: String? = nil,
         question: String,
+        mainImageUrl: String? = nil,
+        authorAvatarUrl: String? = nil,
         status: AskStatus,
         createdAt: Date,
         likeCount: Int? = nil,
@@ -116,7 +128,10 @@ struct MapAsk: Codable, Identifiable {
         self.id = id
         self.center = center
         self.radiusMeters = radiusMeters
+        self.title = title
         self.question = question
+        self.mainImageUrl = mainImageUrl
+        self.authorAvatarUrl = authorAvatarUrl
         self.status = status
         self.createdAt = createdAt
         self.likeCount = likeCount
@@ -127,7 +142,10 @@ struct MapAsk: Codable, Identifiable {
         case id
         case center
         case radiusMeters = "radius_meters"
+        case title
         case question
+        case mainImageUrl = "main_image_url"
+        case authorAvatarUrl = "author_avatar_url"
         case status
         case createdAt = "created_at"
         case likeCount = "like_count"

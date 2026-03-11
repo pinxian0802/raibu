@@ -15,9 +15,13 @@ class CreateAskViewModel: ObservableObject {
     
     @Published var center: CLLocationCoordinate2D
     @Published var radiusMeters: Int = 500
+    @Published var title = ""
     @Published var question = ""
     @Published var selectedPhotos: [SelectedPhoto] = []
-    
+
+    /// nil = 使用大頭貼（預設），有值 = 使用第 n 張照片
+    @Published var pinPhotoIndex: Int? = nil
+
     @Published var isUploading = false
     @Published var uploadProgress: Double = 0
     @Published var errorMessage: String?
@@ -98,6 +102,7 @@ class CreateAskViewModel: ObservableObject {
             let _ = try await askRepository.createAsk(
                 center: Coordinate(lat: center.latitude, lng: center.longitude),
                 radiusMeters: radiusMeters,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 question: question.trimmingCharacters(in: .whitespacesAndNewlines),
                 images: uploadedImages
             )

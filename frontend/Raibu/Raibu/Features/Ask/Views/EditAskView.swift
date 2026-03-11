@@ -48,6 +48,9 @@ struct EditAskView: View {
             NavigationView {
                 ScrollView {
                     VStack(spacing: 20) {
+                        // 標題
+                        titleSection
+
                         // 問題
                         questionSection
                         
@@ -109,6 +112,20 @@ struct EditAskView: View {
         .presentationDragIndicator(.hidden)
     }
     
+    // MARK: - Title Section
+
+    private var titleSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("標題")
+                .font(.headline)
+
+            TextField("輸入標題...", text: $viewModel.title)
+                .padding(8)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
+        }
+    }
+
     // MARK: - Question Section
     
     private var questionSection: some View {
@@ -187,6 +204,7 @@ struct EditAskView: View {
 
 @MainActor
 class EditAskViewModel: ObservableObject {
+    @Published var title: String
     @Published var question: String
     @Published var existingImages: [ImageMedia]
     @Published var status: AskStatus
@@ -204,6 +222,7 @@ class EditAskViewModel: ObservableObject {
     
     init(ask: Ask, uploadService: UploadService, askRepository: AskRepository) {
         self.askId = ask.id
+        self.title = ask.title ?? ""
         self.question = ask.question
         self.existingImages = ask.images ?? []
         self.status = ask.status
@@ -224,6 +243,7 @@ class EditAskViewModel: ObservableObject {
         do {
             try await askRepository.updateAsk(
                 id: askId,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 question: question.trimmingCharacters(in: .whitespacesAndNewlines),
                 status: status,
                 sortedImages: nil

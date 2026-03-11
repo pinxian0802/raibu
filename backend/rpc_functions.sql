@@ -10,17 +10,19 @@ CREATE OR REPLACE FUNCTION create_ask(
   p_lng DOUBLE PRECISION,
   p_lat DOUBLE PRECISION,
   p_radius_meters INTEGER,
-  p_question TEXT
+  p_question TEXT,
+  p_title TEXT DEFAULT NULL
 )
 RETURNS UUID AS $$
 DECLARE
   new_id UUID;
 BEGIN
-  INSERT INTO asks (user_id, center, radius_meters, question)
+  INSERT INTO asks (user_id, center, radius_meters, title, question)
   VALUES (
     p_user_id,
     ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326),
     p_radius_meters,
+    p_title,
     p_question
   )
   RETURNING id INTO new_id;
@@ -58,6 +60,13 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 3. 取得地圖範圍內的紀錄圖片
+DROP FUNCTION IF EXISTS get_record_images_in_bounds(
+  DOUBLE PRECISION,
+  DOUBLE PRECISION,
+  DOUBLE PRECISION,
+  DOUBLE PRECISION
+);
+
 CREATE OR REPLACE FUNCTION get_record_images_in_bounds(
   p_min_lng DOUBLE PRECISION,
   p_min_lat DOUBLE PRECISION,
@@ -93,6 +102,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 3b. 取得單一紀錄的圖片列表（含座標）
+DROP FUNCTION IF EXISTS get_record_images_with_location(UUID);
+
 CREATE OR REPLACE FUNCTION get_record_images_with_location(
   p_record_id UUID
 )
@@ -125,6 +136,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 3c. 取得單一詢問的圖片列表（含座標）
+DROP FUNCTION IF EXISTS get_ask_images_with_location(UUID);
+
 CREATE OR REPLACE FUNCTION get_ask_images_with_location(
   p_ask_id UUID
 )
@@ -153,6 +166,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 3d. 取得單一回覆的圖片列表（含座標）
+DROP FUNCTION IF EXISTS get_reply_images_with_location(UUID);
+
 CREATE OR REPLACE FUNCTION get_reply_images_with_location(
   p_reply_id UUID
 )
@@ -181,6 +196,13 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 4. 取得地圖範圍內的詢問標點 (含 48 小時過濾)
+DROP FUNCTION IF EXISTS get_asks_in_bounds(
+  DOUBLE PRECISION,
+  DOUBLE PRECISION,
+  DOUBLE PRECISION,
+  DOUBLE PRECISION
+);
+
 CREATE OR REPLACE FUNCTION get_asks_in_bounds(
   p_min_lng DOUBLE PRECISION,
   p_min_lat DOUBLE PRECISION,
@@ -192,7 +214,10 @@ RETURNS TABLE (
   lng DOUBLE PRECISION,
   lat DOUBLE PRECISION,
   radius_meters INTEGER,
+  title TEXT,
   question TEXT,
+  main_image_url TEXT,
+  author_avatar_url TEXT,
   status TEXT,
   created_at TIMESTAMPTZ
 ) AS $$
@@ -203,10 +228,14 @@ BEGIN
     ST_X(a.center) AS lng,
     ST_Y(a.center) AS lat,
     a.radius_meters,
+    a.title,
     a.question,
+    a.main_image_url,
+    u.avatar_url AS author_avatar_url,
     a.status,
     a.created_at
   FROM asks a
+  LEFT JOIN users u ON u.id = a.user_id
   WHERE a.created_at >= NOW() - INTERVAL '48 hours'
     AND ST_Within(
       a.center,
@@ -216,6 +245,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 4b. 取得使用者的詢問標點 (含座標)
+DROP FUNCTION IF EXISTS get_user_asks_with_coords(UUID);
+
 CREATE OR REPLACE FUNCTION get_user_asks_with_coords(
   p_user_id UUID
 )
@@ -225,6 +256,7 @@ RETURNS TABLE (
   lng DOUBLE PRECISION,
   lat DOUBLE PRECISION,
   radius_meters INTEGER,
+  title TEXT,
   question TEXT,
   main_image_url TEXT,
   status TEXT,
@@ -241,6 +273,7 @@ BEGIN
     ST_X(a.center) AS lng,
     ST_Y(a.center) AS lat,
     a.radius_meters,
+    a.title,
     a.question,
     a.main_image_url,
     a.status,
@@ -255,6 +288,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 4c. 取得單一詢問標點詳情 (含座標)
+DROP FUNCTION IF EXISTS get_ask_detail_with_coords(UUID);
+
 CREATE OR REPLACE FUNCTION get_ask_detail_with_coords(
   p_ask_id UUID
 )
@@ -264,6 +299,7 @@ RETURNS TABLE (
   lng DOUBLE PRECISION,
   lat DOUBLE PRECISION,
   radius_meters INTEGER,
+  title TEXT,
   question TEXT,
   main_image_url TEXT,
   status TEXT,
@@ -280,6 +316,7 @@ BEGIN
     ST_X(a.center) AS lng,
     ST_Y(a.center) AS lat,
     a.radius_meters,
+    a.title,
     a.question,
     a.main_image_url,
     a.status,
@@ -370,6 +407,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 9. 取得特定用戶的詢問列表（含座標）
+DROP FUNCTION IF EXISTS get_asks_for_user(UUID);
+
 CREATE OR REPLACE FUNCTION get_asks_for_user(
   p_user_id UUID
 )
@@ -379,6 +418,7 @@ RETURNS TABLE (
   lng DOUBLE PRECISION,
   lat DOUBLE PRECISION,
   radius_meters INTEGER,
+  title TEXT,
   question TEXT,
   main_image_url TEXT,
   status TEXT,
@@ -395,6 +435,7 @@ BEGIN
     ST_X(a.center) AS lng,
     ST_Y(a.center) AS lat,
     a.radius_meters,
+    a.title,
     a.question,
     a.main_image_url,
     a.status,

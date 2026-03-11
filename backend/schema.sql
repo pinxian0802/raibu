@@ -41,6 +41,7 @@ CREATE TABLE public.asks (
   user_id UUID REFERENCES public.users(id) NOT NULL,
   center GEOMETRY(Point, 4326) NOT NULL,
   radius_meters INTEGER DEFAULT 500,
+  title TEXT,
   question TEXT NOT NULL,
   main_image_url TEXT,
   status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'RESOLVED')),

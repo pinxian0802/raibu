@@ -16,7 +16,7 @@ class AskService {
    * @returns {Promise<Object>} 建立的詢問
    */
   async createAsk(userId, data) {
-    const { center, radiusMeters, question, images } = data;
+    const { center, radiusMeters, question, title, images } = data;
 
     // 驗證
     this._validateCreateInput(center, question, images);
@@ -27,7 +27,7 @@ class AskService {
     }
 
     // 建立 Ask
-    const askId = await this._insertAsk(userId, center, radiusMeters, question);
+    const askId = await this._insertAsk(userId, center, radiusMeters, title, question);
 
     // 關聯圖片
     let mainImageUrl = null;
@@ -49,6 +49,7 @@ class AskService {
     return {
       id: createdAsk.id,
       user_id: createdAsk.user_id,
+      title: createdAsk.title || null,
       question: createdAsk.question,
       center,
       radius_meters: createdAsk.radius_meters,
@@ -86,11 +87,33 @@ class AskService {
 
       const { data: asks, error: queryError } = await supabase
         .from('asks')
-        .select('id, question, radius_meters, status, created_at')
+        .select(`
+          id,
+          title,
+          question,
+          radius_meters,
+          main_image_url,
+          status,
+          created_at,
+          users:user_id (avatar_url)
+        `)
         .order('created_at', { ascending: false });
 
       if (queryError) throw Errors.internal('查詢失敗');
-      return [];
+      return (asks || []).map(ask => ({
+        id: ask.id,
+        center: {
+          lat: 0,
+          lng: 0,
+        },
+        radius_meters: ask.radius_meters,
+        title: ask.title || null,
+        question: ask.question,
+        main_image_url: ask.main_image_url || null,
+        author_avatar_url: ask.users?.avatar_url || null,
+        status: ask.status,
+        created_at: ask.created_at,
+      }));
     }
 
     return (data || []).map(ask => ({
@@ -100,7 +123,10 @@ class AskService {
         lng: ask.lng,
       },
       radius_meters: ask.radius_meters,
+      title: ask.title || null,
       question: ask.question,
+      main_image_url: ask.main_image_url || null,
+      author_avatar_url: ask.author_avatar_url || null,
       status: ask.status,
       created_at: ask.created_at,
     }));
@@ -168,6 +194,7 @@ class AskService {
       user_id: ask.user_id,
       center: center,
       radius_meters: ask.radius_meters,
+      title: ask.title || null,
       question: ask.question,
       main_image_url: ask.main_image_url,
       status: ask.status,
@@ -189,7 +216,7 @@ class AskService {
    * @returns {Promise<Object>} 更新結果
    */
   async updateAsk(askId, userId, updateData) {
-    const { question, status, sortedImages } = updateData;
+    const { question, title, status, sortedImages } = updateData;
 
     // 驗證擁有權
     await this._verifyOwnership(askId, userId);
@@ -197,6 +224,7 @@ class AskService {
     // 更新基本欄位
     const updates = { updated_at: new Date().toISOString() };
     if (question !== undefined) updates.question = question;
+    if (title !== undefined) updates.title = title;
     if (status !== undefined && ['ACTIVE', 'RESOLVED'].includes(status)) {
       updates.status = status;
     }
@@ -281,12 +309,13 @@ class AskService {
   /**
    * 插入詢問
    */
-  async _insertAsk(userId, center, radiusMeters, question) {
+  async _insertAsk(userId, center, radiusMeters, title, question) {
     const { data: ask, error: askError } = await supabase.rpc('create_ask', {
       p_user_id: userId,
       p_lng: center.lng,
       p_lat: center.lat,
       p_radius_meters: radiusMeters || 500,
+      p_title: title || null,
       p_question: question,
     });
 

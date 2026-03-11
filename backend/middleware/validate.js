@@ -88,6 +88,7 @@ const askSchemas = {
         'any.required': '需要提供有效的中心座標',
       }),
     radius_meters: Joi.number().integer().min(100).max(5000).default(500),
+    title: Joi.string().max(100).allow(null, ''),
     question: Joi.string().min(1).max(1000).required()
       .messages({
         'string.empty': 'question 為必填欄位',
@@ -107,6 +108,7 @@ const askSchemas = {
 
   // 編輯詢問
   update: Joi.object({
+    title: Joi.string().max(100).allow(null, ''),
     question: Joi.string().min(1).max(1000).allow(null),
     status: Joi.string().valid('ACTIVE', 'RESOLVED').allow(null),
     sorted_images: Joi.array().items(
