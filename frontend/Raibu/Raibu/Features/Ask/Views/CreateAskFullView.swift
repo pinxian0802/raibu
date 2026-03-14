@@ -32,7 +32,7 @@ struct CreateAskFullView: View {
     private let metaFont = Font.custom("PingFangTC-Medium", size: 12)
     private let mapPinTitleFont = Font.custom("PingFangTC-Semibold", size: 13)
     private let mapPinTitleUIFont = UIFont(name: "PingFangTC-Semibold", size: 13) ?? UIFont.systemFont(ofSize: 13, weight: .semibold)
-    private let mapPinTitleHorizontalPadding: CGFloat = 12
+    private let mapPinTitleHorizontalPadding: CGFloat = 8
     private let mapPinTitleMaxWidth: CGFloat = 150
     private let mapPinAvatarSize: CGFloat = 70
     private let mapPinTitleMinCardWidth: CGFloat = 52
@@ -407,7 +407,7 @@ struct CreateAskFullView: View {
                 .truncationMode(.tail)
                 .frame(width: mapPinTitleTextWidth, alignment: .leading)
                 .padding(.horizontal, mapPinTitleHorizontalPadding)
-                .padding(.vertical, 7)
+                .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color.white)

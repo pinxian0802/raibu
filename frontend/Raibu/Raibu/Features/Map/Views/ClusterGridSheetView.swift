@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Kingfisher
+import UIKit
 
 /// 群集 Sheet 視圖 - 使用 NavigationStack 管理內部導航
 struct ClusterGridSheetView: View {
@@ -297,16 +298,7 @@ struct ClusterGridSheetView: View {
 
             // 地點標題 + 排序按鈕
             if isResolvingLocationTitle {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("定位中")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 14)
+                locationTitleLoadingView
             } else {
                 // 地點標題：大字 primary + 小字 secondary 行
                 VStack(alignment: .leading, spacing: 6) {
@@ -336,6 +328,28 @@ struct ClusterGridSheetView: View {
                 .padding(.horizontal, 16)
         }
         .animation(.easeInOut(duration: 0.2), value: isResolvingLocationTitle)
+    }
+
+    private var locationTitleLoadingView: some View {
+        let primaryHeight = roundedFontLineHeight(size: 48, weight: .bold)
+        let secondaryHeight = roundedFontLineHeight(size: 15, weight: .regular)
+        return VStack(alignment: .leading, spacing: 6) {
+            ShimmerBox(width: 220, height: primaryHeight, cornerRadius: 8)
+
+            HStack(alignment: .center) {
+                ShimmerBox(width: 140, height: secondaryHeight, cornerRadius: 4)
+                Spacer(minLength: 4)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 14)
+    }
+
+    private func roundedFontLineHeight(size: CGFloat, weight: UIFont.Weight) -> CGFloat {
+        let baseFont = UIFont.systemFont(ofSize: size, weight: weight)
+        let roundedDescriptor = baseFont.fontDescriptor.withDesign(.rounded) ?? baseFont.fontDescriptor
+        let roundedFont = UIFont(descriptor: roundedDescriptor, size: baseFont.pointSize)
+        return roundedFont.lineHeight
     }
 
     private var backButton: some View {

@@ -28,13 +28,21 @@ final class MapIconFactory {
 
     /// 詢問標點外觀設定（對齊 CreateAsk 預覽）
     private static let askAvatarSize: CGFloat = 64
-    private static let askTitleFontSize: CGFloat = 13
-    private static let askTitleHorizontalPadding: CGFloat = 12
-    private static let askTitleVerticalPadding: CGFloat = 7
+    private static var askAvatarCornerRadius: CGFloat {
+        cornerRadius * (askAvatarSize / iconSize)
+    }
+    private static var askAvatarBorderWidth: CGFloat {
+        borderWidth * (askAvatarSize / iconSize)
+    }
+    private static let askTitleFontSize: CGFloat = 12
+    private static let askTitleCornerRadius: CGFloat = 5
+    private static let askTitleHorizontalPadding: CGFloat = 6
+    private static let askTitleVerticalPadding: CGFloat = 4
     private static let askTitleMaxWidth: CGFloat = 150
     private static let askTitleMinWidth: CGFloat = 52
     private static let askAvatarToTitleSpacing: CGFloat = 10
-    private static let askCardShadowPadding: CGFloat = 6
+    private static let askCardShadowPadding: CGFloat = 12
+    
     
     // MARK: - Image Cache
     
@@ -171,33 +179,36 @@ final class MapIconFactory {
     
     /// 建立詢問標點圖標（預覽樣式：大頭貼 + 標題卡）
     static func createAskIcon(title: String?, image: UIImage?) -> UIImage {
-        let displayTitle = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let titleFont = UIFont(
-            name: "PingFangTC-Semibold",
-            size: askTitleFontSize
-        ) ?? UIFont.systemFont(ofSize: askTitleFontSize, weight: .semibold)
-        let textWidth = ceil((displayTitle as NSString).size(withAttributes: [.font: titleFont]).width)
-        let preferredCardWidth = textWidth + (askTitleHorizontalPadding * 2)
-        let cardWidth = min(askTitleMaxWidth, max(askTitleMinWidth, preferredCardWidth))
-        let cardHeight = ceil(titleFont.lineHeight) + (askTitleVerticalPadding * 2)
-        let totalWidth = max(askAvatarSize, cardWidth)
-        let totalHeight = askAvatarSize + askAvatarToTitleSpacing + cardHeight + askCardShadowPadding
-        let size = CGSize(width: totalWidth, height: totalHeight)
+        createAskIcon(title: title, image: image, showTitle: true, showCard: true)
+    }
+    
+    /// 建立詢問標點圖標（可選擇是否顯示標題）
+    private static func createAskIcon(
+        title: String?,
+        image: UIImage?,
+        showTitle: Bool,
+        showCard: Bool
+    ) -> UIImage {
+        let layout = makeAskIconLayout(title: title)
+        let size = CGSize(width: layout.totalWidth, height: layout.totalHeight)
         let renderer = UIGraphicsImageRenderer(size: size)
         
         return renderer.image { context in
-            let avatarOriginX = (totalWidth - askAvatarSize) / 2
+            let avatarOriginX = (layout.totalWidth - askAvatarSize) / 2
             let avatarRect = CGRect(x: avatarOriginX, y: 0, width: askAvatarSize, height: askAvatarSize)
-            let avatarInnerRect = avatarRect.insetBy(dx: borderWidth, dy: borderWidth)
+            let avatarInnerRect = avatarRect.insetBy(dx: askAvatarBorderWidth, dy: askAvatarBorderWidth)
 
-            context.cgContext.setShadow(offset: CGSize(width: 0, height: 4), blur: 8, color: UIColor.black.withAlphaComponent(0.22).cgColor)
+            context.cgContext.setShadow(offset: CGSize(width: 0, height: 5), blur: 10, color: UIColor.black.withAlphaComponent(0.26).cgColor)
             UIColor.appOnPrimary.setFill()
-            context.cgContext.fillEllipse(in: avatarRect)
+            UIBezierPath(roundedRect: avatarRect, cornerRadius: askAvatarCornerRadius).fill()
             context.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
 
             if let image {
                 context.cgContext.saveGState()
-                let clipPath = UIBezierPath(ovalIn: avatarInnerRect)
+                let clipPath = UIBezierPath(
+                    roundedRect: avatarInnerRect,
+                    cornerRadius: askAvatarCornerRadius - askAvatarBorderWidth
+                )
                 clipPath.addClip()
 
                 let imageSize = image.size
@@ -226,7 +237,10 @@ final class MapIconFactory {
                 )
                 if let gradient {
                     context.cgContext.saveGState()
-                    UIBezierPath(ovalIn: avatarInnerRect).addClip()
+                    UIBezierPath(
+                        roundedRect: avatarInnerRect,
+                        cornerRadius: askAvatarCornerRadius - askAvatarBorderWidth
+                    ).addClip()
                     context.cgContext.drawLinearGradient(
                         gradient,
                         start: CGPoint(x: avatarInnerRect.minX, y: avatarInnerRect.minY),
@@ -249,54 +263,86 @@ final class MapIconFactory {
                 }
             }
 
-            // 白色外框
-            UIColor.appOnPrimary.setStroke()
-            let strokePath = UIBezierPath(ovalIn: avatarRect)
-            strokePath.lineWidth = borderWidth
-            strokePath.stroke()
 
             // Title card
-            let cardOriginX = (totalWidth - cardWidth) / 2
-            let cardOriginY = askAvatarSize + askAvatarToTitleSpacing
-            let cardRect = CGRect(x: cardOriginX, y: cardOriginY, width: cardWidth, height: cardHeight)
+            if showCard {
+                let cardOriginX = (layout.totalWidth - layout.cardWidth) / 2
+                let cardOriginY = askAvatarSize + askAvatarToTitleSpacing
+                let cardRect = CGRect(
+                    x: cardOriginX,
+                    y: cardOriginY,
+                    width: layout.cardWidth,
+                    height: layout.cardHeight
+                )
 
-            context.cgContext.setShadow(offset: CGSize(width: 0, height: 4), blur: 10, color: UIColor.black.withAlphaComponent(0.16).cgColor)
-            UIColor.appOnPrimary.setFill()
-            UIBezierPath(roundedRect: cardRect, cornerRadius: 12).fill()
-            context.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
+            context.cgContext.setShadow(offset: CGSize(width: 0, height: 5), blur: 12, color: UIColor.black.withAlphaComponent(0.2).cgColor)
+                UIColor.appOnPrimary.setFill()
+            UIBezierPath(roundedRect: cardRect, cornerRadius: askTitleCornerRadius).fill()
+                context.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
 
-            let textRect = CGRect(
-                x: cardRect.minX + askTitleHorizontalPadding,
-                y: cardRect.minY + askTitleVerticalPadding,
-                width: cardRect.width - (askTitleHorizontalPadding * 2),
-                height: cardRect.height - (askTitleVerticalPadding * 2)
-            )
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.lineBreakMode = .byTruncatingTail
-            paragraphStyle.alignment = .left
-            let textAttributes: [NSAttributedString.Key: Any] = [
-                .font: titleFont,
-                .foregroundColor: UIColor.label,
-                .paragraphStyle: paragraphStyle
-            ]
-            (displayTitle as NSString).draw(in: textRect, withAttributes: textAttributes)
+                if showTitle, !layout.displayTitle.isEmpty {
+                    let textRect = CGRect(
+                        x: cardRect.minX + askTitleHorizontalPadding,
+                        y: cardRect.minY + askTitleVerticalPadding,
+                        width: cardRect.width - (askTitleHorizontalPadding * 2),
+                        height: cardRect.height - (askTitleVerticalPadding * 2)
+                    )
+                    let paragraphStyle = NSMutableParagraphStyle()
+                    paragraphStyle.lineBreakMode = .byTruncatingTail
+                    paragraphStyle.alignment = .center
+                    let textAttributes: [NSAttributedString.Key: Any] = [
+                        .font: layout.titleFont,
+                        .foregroundColor: UIColor.label,
+                        .paragraphStyle: paragraphStyle
+                    ]
+                    (layout.displayTitle as NSString).draw(in: textRect, withAttributes: textAttributes)
+                }
+            }
         }
     }
 
     static func askIconCenterOffset(title: String?) -> CGPoint {
-        let displayTitle = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let titleFont = UIFont(
-            name: "PingFangTC-Semibold",
-            size: askTitleFontSize
-        ) ?? UIFont.systemFont(ofSize: askTitleFontSize, weight: .semibold)
-        let textWidth = ceil((displayTitle as NSString).size(withAttributes: [.font: titleFont]).width)
-        let preferredCardWidth = textWidth + (askTitleHorizontalPadding * 2)
-        let cardWidth = min(askTitleMaxWidth, max(askTitleMinWidth, preferredCardWidth))
-        let cardHeight = ceil(titleFont.lineHeight) + (askTitleVerticalPadding * 2)
-        let _ = max(askAvatarSize, cardWidth)
-        let totalHeight = askAvatarSize + askAvatarToTitleSpacing + cardHeight + askCardShadowPadding
-        let centerOffsetY = (askAvatarSize / 2) - (totalHeight / 2)
+        let layout = makeAskIconLayout(title: title)
+        let centerOffsetY = (askAvatarSize / 2) - (layout.totalHeight / 2)
         return CGPoint(x: 0, y: centerOffsetY)
+    }
+
+    // MARK: - Ask Cluster Icon
+
+    /// 詢問群聚徽章位置（相對頭像右上角）
+    private static let askClusterBadgeOverlapX: CGFloat = 0.5
+    private static let askClusterBadgeOverlapY: CGFloat = 0.55
+    
+    private struct AskClusterBadgeLayout {
+        let iconRect: CGRect
+        let badgeRect: CGRect
+        let canvasSize: CGSize
+        let translation: CGPoint
+        let avatarCenterInCanvas: CGPoint
+    }
+
+    /// 建立詢問群聚圖標（與單一詢問標點完全相同 + 右上角數量徽章）
+    static func createAskClusterIcon(title: String?, image: UIImage?, count: Int) -> UIImage {
+        let badgeLayout = makeAskClusterBadgeLayout(title: title)
+        let icon = createAskIcon(title: title, image: image, showTitle: true, showCard: true)
+
+        let renderer = UIGraphicsImageRenderer(size: badgeLayout.canvasSize)
+        return renderer.image { ctx in
+            icon.draw(in: badgeLayout.iconRect.offsetBy(dx: badgeLayout.translation.x, dy: badgeLayout.translation.y))
+            drawAskClusterBadge(
+                count: count,
+                in: badgeLayout.badgeRect.offsetBy(dx: badgeLayout.translation.x, dy: badgeLayout.translation.y),
+                context: ctx
+            )
+        }
+    }
+
+    static func askClusterCenterOffset(title: String?) -> CGPoint {
+        let badgeLayout = makeAskClusterBadgeLayout(title: title)
+        return CGPoint(
+            x: badgeLayout.avatarCenterInCanvas.x - badgeLayout.canvasSize.width / 2,
+            y: badgeLayout.avatarCenterInCanvas.y - badgeLayout.canvasSize.height / 2
+        )
     }
     
     // MARK: - Cluster Icon
@@ -335,5 +381,102 @@ final class MapIconFactory {
             )
             text.draw(in: textRect, withAttributes: attributes)
         }
+    }
+
+    // MARK: - Ask Layout Helpers
+    
+    private struct AskIconLayout {
+        let displayTitle: String
+        let titleFont: UIFont
+        let cardWidth: CGFloat
+        let cardHeight: CGFloat
+        let totalWidth: CGFloat
+        let totalHeight: CGFloat
+    }
+    
+    private static func makeAskIconLayout(title: String?) -> AskIconLayout {
+        makeAskIconLayout(title: title, avatarSize: askAvatarSize)
+    }
+
+    private static func makeAskIconLayout(title: String?, avatarSize: CGFloat) -> AskIconLayout {
+        let displayTitle = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let titleFont = UIFont(
+            name: "PingFangTC-Regular",
+            size: askTitleFontSize
+        ) ?? UIFont.systemFont(ofSize: askTitleFontSize, weight: .regular)
+        let textWidth = ceil((displayTitle as NSString).size(withAttributes: [.font: titleFont]).width)
+        let preferredCardWidth = textWidth + (askTitleHorizontalPadding * 2)
+        let cardWidth = min(askTitleMaxWidth, max(askTitleMinWidth, preferredCardWidth))
+        let cardHeight = ceil(titleFont.lineHeight) + (askTitleVerticalPadding * 2)
+        let totalWidth = max(avatarSize, cardWidth)
+        let totalHeight = avatarSize + askAvatarToTitleSpacing + cardHeight + askCardShadowPadding
+        
+        return AskIconLayout(
+            displayTitle: displayTitle,
+            titleFont: titleFont,
+            cardWidth: cardWidth,
+            cardHeight: cardHeight,
+            totalWidth: totalWidth,
+            totalHeight: totalHeight
+        )
+    }
+
+    private static func makeAskClusterBadgeLayout(title: String?) -> AskClusterBadgeLayout {
+        let layout = makeAskIconLayout(title: title)
+        let iconW = layout.totalWidth
+        let iconH = layout.totalHeight
+        let avatarX = (iconW - askAvatarSize) / 2
+        let avatarRect = CGRect(x: avatarX, y: 0, width: askAvatarSize, height: askAvatarSize)
+        let badgeRect = CGRect(
+            x: avatarRect.maxX - badgeSize * (1 - askClusterBadgeOverlapX),
+            y: avatarRect.minY - badgeSize * askClusterBadgeOverlapY,
+            width: badgeSize,
+            height: badgeSize
+        )
+
+        let iconRect = CGRect(x: 0, y: 0, width: iconW, height: iconH)
+        let bounds = iconRect.union(badgeRect)
+        let translation = CGPoint(x: -bounds.minX, y: -bounds.minY)
+        let canvasSize = CGSize(width: ceil(bounds.width), height: ceil(bounds.height))
+        let avatarCenterInCanvas = CGPoint(
+            x: avatarRect.midX + translation.x,
+            y: avatarRect.midY + translation.y
+        )
+
+        return AskClusterBadgeLayout(
+            iconRect: iconRect,
+            badgeRect: badgeRect,
+            canvasSize: canvasSize,
+            translation: translation,
+            avatarCenterInCanvas: avatarCenterInCanvas
+        )
+    }
+    
+    private static func drawAskClusterBadge(
+        count: Int,
+        in rect: CGRect,
+        context: UIGraphicsImageRendererContext
+    ) {
+        UIColor.appOnPrimary.setFill()
+        context.cgContext.fillEllipse(in: rect)
+        
+        let innerRect = rect.insetBy(dx: 2, dy: 2)
+        UIColor.brandOrange.setFill()
+        context.cgContext.fillEllipse(in: innerRect)
+        
+        let text = "\(count)" as NSString
+        let fontSize: CGFloat = count >= 100 ? 10 : (count >= 10 ? 12 : 14)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.boldSystemFont(ofSize: fontSize),
+            .foregroundColor: UIColor.appOnPrimary
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        let textRect = CGRect(
+            x: rect.midX - textSize.width / 2,
+            y: rect.midY - textSize.height / 2,
+            width: textSize.width,
+            height: textSize.height
+        )
+        text.draw(in: textRect, withAttributes: attributes)
     }
 }

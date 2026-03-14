@@ -307,8 +307,12 @@ struct MapViewRepresentable: UIViewRepresentable {
                             badgeCount: cluster.count)
                     }
                 } else {
-                    annotationView?.image = MapIconFactory.createClusterIcon(
-                        count: cluster.count, mode: clusterAnnotation.mode)
+                    if let latestAsk = latestAsk(in: cluster.items) {
+                        loadAskClusterIcon(for: annotationView, ask: latestAsk, count: cluster.count)
+                    } else {
+                        annotationView?.image = MapIconFactory.createClusterIcon(
+                            count: cluster.count, mode: clusterAnnotation.mode)
+                    }
                 }
             }
 
@@ -415,6 +419,73 @@ struct MapViewRepresentable: UIViewRepresentable {
                     annotationView?.centerOffset = MapIconFactory.askIconCenterOffset(title: title)
                 }
             }.resume()
+        }
+        
+        /// 載入詢問群集圖標（小正方形圖片 + 標題卡 + badge）
+        private func loadAskClusterIcon(
+            for annotationView: MKAnnotationView?,
+            ask: MapAsk,
+            count: Int
+        ) {
+            let title = ask.title
+            let imageUrl = ask.mainImageUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let avatarUrl = ask.authorAvatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedUrl = (imageUrl?.isEmpty == false ? imageUrl : avatarUrl)
+            let cacheKey = "ask_cluster_\(count)_\(ask.id)_\(resolvedUrl ?? "nil")_\(title ?? "")"
+                as NSString
+
+            if let cachedImage = MapIconFactory.imageCache.object(forKey: cacheKey) {
+                annotationView?.image = cachedImage
+                annotationView?.bounds = CGRect(origin: .zero, size: cachedImage.size)
+                annotationView?.centerOffset = MapIconFactory.askClusterCenterOffset(title: title)
+                return
+            }
+
+            guard let urlString = resolvedUrl, let url = URL(string: urlString) else {
+                let icon = MapIconFactory.createAskClusterIcon(title: title, image: nil, count: count)
+                MapIconFactory.imageCache.setObject(icon, forKey: cacheKey)
+                annotationView?.image = icon
+                annotationView?.bounds = CGRect(origin: .zero, size: icon.size)
+                annotationView?.centerOffset = MapIconFactory.askClusterCenterOffset(title: title)
+                return
+            }
+
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
+
+            URLSession.shared.dataTask(with: request) { [weak annotationView] data, _, _ in
+                guard let data = data, let image = UIImage(data: data) else {
+                    let fallback = MapIconFactory.createAskClusterIcon(title: title, image: nil, count: count)
+                    MapIconFactory.imageCache.setObject(fallback, forKey: cacheKey)
+                    DispatchQueue.main.async {
+                        annotationView?.image = fallback
+                        annotationView?.bounds = CGRect(origin: .zero, size: fallback.size)
+                        annotationView?.centerOffset = MapIconFactory.askClusterCenterOffset(title: title)
+                    }
+                    return
+                }
+
+                let icon = MapIconFactory.createAskClusterIcon(title: title, image: image, count: count)
+                MapIconFactory.imageCache.setObject(icon, forKey: cacheKey)
+                DispatchQueue.main.async {
+                    annotationView?.image = icon
+                    annotationView?.bounds = CGRect(origin: .zero, size: icon.size)
+                    annotationView?.centerOffset = MapIconFactory.askClusterCenterOffset(title: title)
+                }
+            }.resume()
+        }
+        
+        private func latestAsk(in items: [ClusterItem]) -> MapAsk? {
+            let asks = items.compactMap { item -> MapAsk? in
+                if case .ask(let ask) = item { return ask }
+                return nil
+            }
+            return asks.max { lhs, rhs in
+                if lhs.createdAt != rhs.createdAt {
+                    return lhs.createdAt < rhs.createdAt
+                }
+                return lhs.id < rhs.id
+            }
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
