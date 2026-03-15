@@ -57,11 +57,12 @@ struct EditRecordView: View {
     
     var body: some View {
         BottomSheetScaffold(
+            topBarBottomPadding: 12,
             leading: {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark")
+                    Image(systemName: "chevron.left")
                         .font(.system(size: 18, weight: .semibold))
                 }
                 .foregroundColor(Color(uiColor: .systemIndigo).opacity(0.8))
@@ -102,7 +103,6 @@ struct EditRecordView: View {
                         .padding(.horizontal, 24)
                     
                     attachmentsSection
-                    photoActionBar
                 }
             }
         )
@@ -248,18 +248,18 @@ struct EditRecordView: View {
                 HStack(spacing: 8) {
                     Text("最多可選取 10 張照片")
                         .font(.custom("PingFangTC-Medium", size: 13))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black)
                     
                     Spacer()
                     
-                    Text("\(viewModel.photoCount)/\(maxPhotoCount) 張")
-                        .font(metaFont)
+                    addPhotoButton
                 }
                 
                 if viewModel.photoCount == 0 {
                     emptyPhotosHintView
                 } else {
                     selectedPhotosView
+                        .padding(.top, 8)
                 }
             }
             .padding(.horizontal, 20)
@@ -269,7 +269,7 @@ struct EditRecordView: View {
     }
     
     private var emptyPhotosHintView: some View {
-        Text("至少需要一張照片")
+        Text("分享你的照片吧")
             .font(.custom("PingFangTC-Medium", size: 18))
             .foregroundColor(.secondary)
             .frame(maxWidth: .infinity)
@@ -277,15 +277,25 @@ struct EditRecordView: View {
     }
     
     private var selectedPhotosView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(attachmentThumbnails) { thumbnail in
-                    attachmentThumbnailView(thumbnail)
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(attachmentThumbnails) { thumbnail in
+                        attachmentThumbnailView(thumbnail)
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 2)
+            .padding(.horizontal, -20)
+            .frame(height: 176)
+            
+            Text("\(viewModel.photoCount)/\(maxPhotoCount) 張")
+                .font(metaFont)
+                .foregroundColor(.secondary)
+                .padding(.leading, 2)
         }
-        .frame(height: 184)
+        .frame(height: 184, alignment: .bottomLeading)
     }
     
     private func attachmentThumbnailView(_ thumbnail: AttachmentThumbnail) -> some View {
@@ -381,39 +391,19 @@ struct EditRecordView: View {
         showPhotoPicker = true
     }
     
-    private var photoActionBar: some View {
-        VStack(spacing: 8) {
-            Button {
-                Task {
-                    await preparePhotoPickerAndPresent()
-                }
-            } label: {
-                HStack(spacing: 0) {
-                    Text(isPreparingPhotoPicker ? "讀取照片中..." : "選取照片")
-                }
-                .font(.custom("PingFangTC-Semibold", size: 17))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 17)
-                .background(viewModel.photoCount < maxPhotoCount && !viewModel.isSaving && !isPreparingPhotoPicker ? Color.brandBlue : Color.appDisabled)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    private var addPhotoButton: some View {
+        Button {
+            Task {
+                await preparePhotoPickerAndPresent()
             }
-            .buttonStyle(.plain)
-            .disabled(viewModel.photoCount >= maxPhotoCount || viewModel.isSaving || isPreparingPhotoPicker)
-            
-            if viewModel.photoCount >= maxPhotoCount {
-                Text("已達 10 張照片上限")
-                    .font(.custom("PingFangTC-Medium", size: 12))
-                    .foregroundColor(.secondary)
-            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(viewModel.photoCount < maxPhotoCount && !viewModel.isSaving && !isPreparingPhotoPicker ? .black : .secondary)
+                .frame(width: 28, height: 28, alignment: .center)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 14)
-        .background(
-            Color.appSurface
-                .shadow(color: Color.appOverlay.opacity(0.08), radius: 12, x: 0, y: -4)
-        )
+        .buttonStyle(.plain)
+        .disabled(viewModel.photoCount >= maxPhotoCount || viewModel.isSaving || isPreparingPhotoPicker)
     }
 }
 
@@ -428,6 +418,99 @@ private enum AttachmentThumbnail: Identifiable {
         case .new(let photo):
             return "new-\(photo.id)"
         }
+    }
+}
+
+// MARK: - Route Entry
+
+struct RecordEditRouteView: View {
+    let recordId: String
+    let prefetchedRecord: Record?
+    let recordRepository: RecordRepository
+    let uploadService: UploadService
+    let onComplete: () -> Void
+
+    @State private var record: Record?
+    @State private var isLoading: Bool
+    @State private var errorMessage: String?
+    @State private var hasStartedInitialLoad = false
+
+    init(
+        recordId: String,
+        prefetchedRecord: Record?,
+        recordRepository: RecordRepository,
+        uploadService: UploadService,
+        onComplete: @escaping () -> Void
+    ) {
+        self.recordId = recordId
+        self.prefetchedRecord = prefetchedRecord
+        self.recordRepository = recordRepository
+        self.uploadService = uploadService
+        self.onComplete = onComplete
+        _record = State(initialValue: prefetchedRecord)
+        _isLoading = State(initialValue: prefetchedRecord == nil)
+    }
+
+    var body: some View {
+        Group {
+            if let record {
+                EditRecordView(
+                    recordId: recordId,
+                    record: record,
+                    uploadService: uploadService,
+                    recordRepository: recordRepository,
+                    onComplete: onComplete
+                )
+            } else if isLoading {
+                VStack(spacing: 0) {
+                    SheetTopHandle()
+                    RecordDetailSkeleton()
+                }
+                .background(Color.appSurface)
+            } else {
+                VStack(spacing: 16) {
+                    SheetTopHandle()
+                    Spacer()
+
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+
+                    Text(errorMessage ?? "載入失敗")
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Button("重試") {
+                        Task {
+                            await loadRecord()
+                        }
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+            }
+        }
+        .task {
+            guard !hasStartedInitialLoad else { return }
+            hasStartedInitialLoad = true
+            guard record == nil else { return }
+            await loadRecord()
+        }
+    }
+
+    @MainActor
+    private func loadRecord() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            record = try await recordRepository.getRecordDetail(id: recordId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
     }
 }
 

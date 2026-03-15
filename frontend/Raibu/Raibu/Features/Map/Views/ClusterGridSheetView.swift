@@ -18,6 +18,7 @@ struct ClusterGridSheetView: View {
     let replyRepository: ReplyRepository
     
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var container: DIContainer
     @State private var navigationPath = NavigationPath()
     @State private var isResolvingLocationTitle = true
     @State private var locationPrimaryTitle = "重疊標點"
@@ -25,6 +26,9 @@ struct ClusterGridSheetView: View {
     @State private var selectedSortOption: ClusterSortOption = .latest
     @State private var showSortMenu = false
     @State private var randomRanksByItemId: [String: Int] = [:]
+    @State private var pendingRecordEditId: String? = nil
+    @State private var pendingRecordEditOnComplete: (() -> Void)? = nil
+    @State private var recordEditPrefetchedRecords: [String: Record] = [:]
     
     private let sortMenuWidth: CGFloat = 186
     private let sortMenuShowAnimation = Animation.spring(response: 0.32, dampingFraction: 0.82)
@@ -72,16 +76,15 @@ struct ClusterGridSheetView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            SheetTopHandle(topPadding: 8, bottomPadding: 4)
-            locationTitleView
-
-            NavigationStack(path: $navigationPath) {
+        NavigationStack(path: $navigationPath) {
+            VStack(spacing: 0) {
+                SheetTopHandle(topPadding: 8, bottomPadding: 4)
+                locationTitleView
                 gridContent
-                    .navigationBarHidden(true)
-                    .navigationDestination(for: ClusterDetailDestination.self) { destination in
-                        detailView(for: destination)
-                    }
+            }
+            .navigationBarHidden(true)
+            .navigationDestination(for: ClusterDetailDestination.self) { destination in
+                detailView(for: destination)
             }
         }
         .presentationDragIndicator(.hidden)
@@ -125,6 +128,11 @@ struct ClusterGridSheetView: View {
         .onChange(of: selectedSortOption) { _, newValue in
             if newValue == .random {
                 regenerateRandomRanks()
+            }
+        }
+        .onChange(of: navigationPath.count) { _, newCount in
+            if newCount > 0, showSortMenu {
+                closeSortMenu()
             }
         }
         .task(id: locationTitleTaskID) {
@@ -207,17 +215,48 @@ struct ClusterGridSheetView: View {
     private func detailView(for destination: ClusterDetailDestination) -> some View {
         switch destination {
         case .record(let id, let imageIndex):
-            RecordDetailContentView(
+            RecordDetailSheetView(
                 recordId: id,
                 initialImageIndex: imageIndex,
                 recordRepository: recordRepository,
-                replyRepository: replyRepository
+                replyRepository: replyRepository,
+                onOpenUserProfile: { userId in
+                    navigationPath.append(ClusterDetailDestination.userProfile(id: userId))
+                },
+                onOpenRecordEdit: { recordId, prefetchedRecord, onUpdated in
+                    pendingRecordEditId = recordId
+                    pendingRecordEditOnComplete = onUpdated
+                    if let prefetchedRecord {
+                        recordEditPrefetchedRecords[recordId] = prefetchedRecord
+                    }
+                    navigationPath.append(ClusterDetailDestination.recordEdit(id: recordId))
+                },
+                showsBackButtonOverride: false
             )
         case .ask(let id):
             AskDetailSheetView(
                 askId: id,
                 askRepository: askRepository,
                 replyRepository: replyRepository
+            )
+        case .userProfile(let userId):
+            OtherUserProfileContentView(
+                userId: userId,
+                userRepository: container.userRepository
+            )
+        case .recordEdit(let recordId):
+            RecordEditRouteView(
+                recordId: recordId,
+                prefetchedRecord: recordEditPrefetchedRecords[recordId],
+                recordRepository: recordRepository,
+                uploadService: container.uploadService,
+                onComplete: {
+                    if pendingRecordEditId == recordId {
+                        pendingRecordEditOnComplete?()
+                        pendingRecordEditOnComplete = nil
+                        pendingRecordEditId = nil
+                    }
+                }
             )
         }
     }
@@ -575,277 +614,6 @@ private struct ClusterSortButtonAnchorPreferenceKey: PreferenceKey {
 enum ClusterDetailDestination: Hashable {
     case record(id: String, imageIndex: Int)
     case ask(id: String)
-}
-
-// MARK: - Record Detail Content View (嵌入式版本，用於 NavigationStack)
-
-struct RecordDetailContentView: View {
-    @EnvironmentObject var navigationCoordinator: NavigationCoordinator
-    @EnvironmentObject var container: DIContainer
-    @StateObject private var viewModel: RecordDetailViewModel
-    @State private var showReplyInput = false
-    @State private var showMoreOptions = false
-    @State private var showEditSheet = false
-    
-    init(
-        recordId: String,
-        initialImageIndex: Int = 0,
-        recordRepository: RecordRepository,
-        replyRepository: ReplyRepository
-    ) {
-        _viewModel = StateObject(wrappedValue: RecordDetailViewModel(
-            recordId: recordId,
-            initialImageIndex: initialImageIndex,
-            recordRepository: recordRepository,
-            replyRepository: replyRepository
-        ))
-    }
-    
-    var body: some View {
-        ZStack {
-            if viewModel.isLoading {
-                loadingView
-            } else if let record = viewModel.record {
-                contentView(record: record)
-            } else if let error = viewModel.errorMessage {
-                errorView(message: error)
-            } else {
-                loadingView
-            }
-        }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                moreOptionsButton
-            }
-        }
-        .task {
-            viewModel.loadRecord()
-        }
-        .confirmationDialog("管理", isPresented: $showMoreOptions) {
-            Button("編輯", role: nil) {
-                showEditSheet = true
-            }
-            Button("刪除", role: .destructive) {
-                viewModel.showDeleteConfirmation = true
-            }
-            Button("取消", role: .cancel) {}
-        }
-        .navigationDestination(isPresented: $showEditSheet) {
-            if let record = viewModel.record {
-                EditRecordView(
-                    recordId: viewModel.recordId,
-                    record: record,
-                    uploadService: container.uploadService,
-                    recordRepository: container.recordRepository,
-                    onComplete: {
-                        Task {
-                            viewModel.loadRecord()
-                        }
-                    }
-                )
-            } else {
-                VStack(spacing: 0) {
-                    SheetTopHandle()
-                    RecordDetailSkeleton()
-                }
-                .background(Color.appSurface)
-                .task {
-                    viewModel.loadRecord()
-                }
-            }
-        }
-        .alert("確認刪除", isPresented: $viewModel.showDeleteConfirmation) {
-            Button("取消", role: .cancel) {}
-            Button("刪除", role: .destructive) {
-                Task {
-                    await viewModel.deleteRecord()
-                }
-            }
-        } message: {
-            Text("確定要刪除此標點嗎？此動作無法復原。")
-        }
-    }
-    
-    // MARK: - Content View
-    
-    private func contentView(record: Record) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // 圖片輪播
-                if let images = record.images, !images.isEmpty {
-                    ImageCarouselView(
-                        images: images,
-                        initialIndex: viewModel.initialImageIndex,
-                        onLocationTap: { image in
-                            // 點擊「查看位置」按鈕跳轉到地圖位置
-                            if let coordinate = image.clLocationCoordinate {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    navigationCoordinator.navigateToMap(coordinate: coordinate, mapMode: .record)
-                                }
-                            }
-                        }
-                    )
-                    .frame(height: 280)
-                }
-                
-                // 內容區
-                VStack(alignment: .leading, spacing: 16) {
-                    // 描述
-                    Text(record.description)
-                        .font(.body)
-                    
-                    // 時間
-                    Text(formatDate(record.createdAt))
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    // 作者資訊 & 愛心
-                    HStack {
-                        if let author = record.author {
-                            authorView(author: author)
-                        }
-                        
-                        Spacer()
-                        
-                        LikeButtonLarge(
-                            count: viewModel.likeCount,
-                            isLiked: viewModel.isLiked
-                        ) {
-                            Task {
-                                await viewModel.toggleLike()
-                            }
-                        }
-                    }
-                    
-                    Divider()
-                    
-                    // 回覆區
-                    repliesSection
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-    
-    // MARK: - Author View
-    
-    private func authorView(author: User) -> some View {
-        NavigationLink {
-            OtherUserProfileContentView(
-                userId: author.id,
-                userRepository: container.userRepository
-            )
-        } label: {
-            HStack(spacing: 10) {
-                KFImage(URL(string: author.avatarUrl ?? ""))
-                    .placeholder {
-                        Circle()
-                            .fill(Color(.systemGray4))
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .foregroundColor(.secondary)
-                            )
-                    }
-                    .retry(maxCount: 2, interval: .seconds(1))
-                    .cacheOriginalImage()
-                    .fade(duration: 0.2)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 36, height: 36)
-                    .clipShape(Circle())
-                
-                Text(author.displayName)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.primary)
-            }
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    // MARK: - Replies Section
-    
-    private var repliesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("回覆")
-                    .font(.headline)
-                
-                Text("(\(viewModel.replies.count))")
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-            }
-            
-            if viewModel.replies.isEmpty {
-                Text("還沒有回覆")
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 20)
-            } else {
-                ForEach(viewModel.replies) { reply in
-                    ReplyRowView(reply: reply) { replyId in
-                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
-                    }
-                    
-                    if reply.id != viewModel.replies.last?.id {
-                        Divider()
-                    }
-                }
-            }
-            
-            // 新增回覆按鈕
-            Button {
-                showReplyInput = true
-            } label: {
-                HStack {
-                    Image(systemName: "plus.bubble")
-                    Text("新增回覆")
-                }
-                .font(.subheadline)
-                .foregroundColor(.brandBlue)
-                .padding(.vertical, 8)
-            }
-        }
-    }
-    
-    // MARK: - Supporting Views
-    
-    private var loadingView: some View {
-        RecordDetailSkeleton()
-    }
-    
-    private func errorView(message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            
-            Text(message)
-                .foregroundColor(.secondary)
-            
-            Button("重試") {
-                Task {
-                    viewModel.loadRecord()
-                }
-            }
-        }
-    }
-    
-    private var moreOptionsButton: some View {
-        Button {
-            showMoreOptions = true
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.title3)
-        }
-    }
-    
-    // MARK: - Helpers
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd HH:mm"
-        return formatter.string(from: date)
-    }
+    case userProfile(id: String)
+    case recordEdit(id: String)
 }

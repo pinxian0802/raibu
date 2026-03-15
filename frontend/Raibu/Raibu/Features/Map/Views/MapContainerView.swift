@@ -71,6 +71,8 @@ struct MapContentView: View {
                 replyRepository: container.replyRepository
             )
             .environmentObject(navigationCoordinator)
+            .environmentObject(detailSheetRouter)
+            .environmentObject(container.authService)
             .environmentObject(container)
         }
         .sheet(item: $navigationCoordinator.createAskLocation,

@@ -22,7 +22,6 @@ struct AskDetailSheetView: View {
     @EnvironmentObject var container: DIContainer
     @StateObject private var viewModel: AskDetailViewModel
 
-    @State private var showEditSheet = false
     @State private var showReportSheet = false
     @State private var showMoreOptions = false
     @State private var showDeleteConfirmation = false
@@ -128,21 +127,6 @@ struct AskDetailSheetView: View {
                 )
             }
         }
-        .sheet(isPresented: $showEditSheet) {
-            if let ask = viewModel.ask {
-                EditAskView(
-                    askId: askId,
-                    ask: ask,
-                    uploadService: container.uploadService,
-                    askRepository: askRepository,
-                    onComplete: {
-                        Task { await viewModel.loadAsk() }
-                    }
-                )
-            } else {
-                EmptyView()
-            }
-        }
         .sheet(isPresented: $showReportSheet) {
             ReportSheetView(
                 target: .ask(id: askId),
@@ -153,6 +137,9 @@ struct AskDetailSheetView: View {
             guard !hasStartedInitialLoad else { return }
             hasStartedInitialLoad = true
             await viewModel.loadAsk()
+        }
+        .onChange(of: detailSheetRouter.askRefreshVersion(for: askId)) { _, _ in
+            Task { await viewModel.loadAsk() }
         }
         .fullScreenImageViewer(
             isPresented: $showFullScreenImage,
@@ -362,7 +349,11 @@ struct AskDetailSheetView: View {
         if viewModel.isOwner {
             DetailOptionRow(title: "編輯", systemImage: "pencil") {
                 showMoreOptions = false
-                showEditSheet = true
+                if let ask = viewModel.ask {
+                    detailSheetRouter.openAskEdit(id: askId, prefetchedAsk: ask)
+                } else {
+                    detailSheetRouter.open(.askEdit(id: askId))
+                }
             }
 
             if viewModel.ask?.status == .active {

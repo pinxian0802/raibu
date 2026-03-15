@@ -23,6 +23,10 @@ struct RecordDetailSheetView: View {
     @State private var isHeartAnimating = false
     @State private var hasStartedInitialLoad = false
     @State private var keepBackButtonVisibleDuringDismiss = false
+
+    private let onOpenUserProfile: ((String) -> Void)?
+    private let onOpenRecordEdit: ((String, Record?, @escaping () -> Void) -> Void)?
+    private let showsBackButtonOverride: Bool?
     
     // Fullscreen Image Viewer
     @State private var showFullScreenImage = false
@@ -41,8 +45,14 @@ struct RecordDetailSheetView: View {
         recordId: String,
         initialImageIndex: Int = 0,
         recordRepository: RecordRepository,
-        replyRepository: ReplyRepository
+        replyRepository: ReplyRepository,
+        onOpenUserProfile: ((String) -> Void)? = nil,
+        onOpenRecordEdit: ((String, Record?, @escaping () -> Void) -> Void)? = nil,
+        showsBackButtonOverride: Bool? = nil
     ) {
+        self.onOpenUserProfile = onOpenUserProfile
+        self.onOpenRecordEdit = onOpenRecordEdit
+        self.showsBackButtonOverride = showsBackButtonOverride
         _viewModel = StateObject(wrappedValue: RecordDetailViewModel(
             recordId: recordId,
             initialImageIndex: initialImageIndex,
@@ -146,6 +156,9 @@ struct RecordDetailSheetView: View {
     }
 
     private var shouldShowBackButton: Bool {
+        if let showsBackButtonOverride {
+            return showsBackButtonOverride
+        }
         if keepBackButtonVisibleDuringDismiss {
             return true
         }
@@ -185,7 +198,11 @@ struct RecordDetailSheetView: View {
                     replies: viewModel.replies,
                     isLoadingReplies: false,
                     onAuthorTap: { userId in
-                        detailSheetRouter.open(.userProfile(id: userId))
+                        if let onOpenUserProfile {
+                            onOpenUserProfile(userId)
+                        } else {
+                            detailSheetRouter.open(.userProfile(id: userId))
+                        }
                     },
                     onLikeToggle: { replyId in
                         Task { await viewModel.toggleReplyLike(replyId: replyId) }
@@ -214,7 +231,13 @@ struct RecordDetailSheetView: View {
                     createdAt: record.createdAt,
                     anchorKey: MoreOptionsButtonAnchorPreferenceKey.self,
                     onBackTap: { dismiss() },
-                    onAvatarTap: { detailSheetRouter.open(.userProfile(id: author.id)) },
+                    onAvatarTap: {
+                        if let onOpenUserProfile {
+                            onOpenUserProfile(author.id)
+                        } else {
+                            detailSheetRouter.open(.userProfile(id: author.id))
+                        }
+                    },
                     showMoreOptions: $showMoreOptions
                 )
             }
@@ -302,10 +325,16 @@ struct RecordDetailSheetView: View {
         if viewModel.isOwner {
             DetailOptionRow(title: "編輯", systemImage: "pencil") {
                 showMoreOptions = false
-                detailSheetRouter.openRecordEdit(
-                    id: viewModel.recordId,
-                    prefetchedRecord: viewModel.record
-                )
+                if let onOpenRecordEdit {
+                    onOpenRecordEdit(viewModel.recordId, viewModel.record) {
+                        viewModel.loadRecord()
+                    }
+                } else {
+                    detailSheetRouter.openRecordEdit(
+                        id: viewModel.recordId,
+                        prefetchedRecord: viewModel.record
+                    )
+                }
             }
             DetailOptionDivider()
             DetailOptionRow(title: "刪除", systemImage: "trash", role: .destructive) {
