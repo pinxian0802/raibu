@@ -37,7 +37,8 @@ struct AskDetailSheetView: View {
     @State private var fullScreenImageIndex: Int = 0
     @State private var scrolledImageId: String?
 
-    private let questionFont = Font.system(size: 16, weight: .regular, design: .rounded)
+    private let askTitleFont = Font.custom("PingFangTC-Medium", size: 24)
+    private let askBodyFont = Font.system(size: 16, weight: .regular, design: .rounded)
     private let imageCardWidth: CGFloat = 300
     private let imageCardHeight: CGFloat = 375
     private let moreOptionsMenuWidth: CGFloat = 186
@@ -277,47 +278,21 @@ struct AskDetailSheetView: View {
                 // 3. 標題
                 if let title = ask.title, !title.isEmpty {
                     Text(title)
-                        .font(.custom("PingFangTC-Semibold", size: 18))
+                        .font(askTitleFont)
                         .foregroundColor(.primary)
                 }
 
-                // 4. 內容描述（有圖片才顯示分隔線）
-                if hasImages { Divider() }
+                // 4. 內容描述
                 DetailDescriptionSection(
                     description: ask.question,
                     isExpanded: $isDescriptionExpanded,
-                    font: questionFont
+                    font: askBodyFont
                 )
 
-                // 5. 詢問範圍 + 地圖按鈕 + 已解決標籤
-                HStack(spacing: 8) {
-                    Image(systemName: "scope")
-                        .foregroundColor(.brandOrange)
-                    Text("詢問範圍：\(ask.radiusMeters)m")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Spacer()
-
-                    Button {
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            navigationCoordinator.navigateToMap(
-                                coordinate: ask.center.clLocationCoordinate,
-                                mapMode: .ask
-                            )
-                        }
-                    } label: {
-                        Label("在地圖上查看", systemImage: "map")
-                            .font(.caption.weight(.medium))
-                            .foregroundColor(.brandOrange)
-                    }
-
-                    if ask.status == .resolved {
-                        Label("已解決", systemImage: "checkmark.circle.fill")
-                            .font(.caption.weight(.medium))
-                            .foregroundColor(.appSuccess)
-                    }
+                if ask.status == .resolved {
+                    Label("已解決", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.appSuccess)
                 }
 
                 DetailInteractionRow(

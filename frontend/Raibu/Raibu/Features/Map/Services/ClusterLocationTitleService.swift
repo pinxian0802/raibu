@@ -63,7 +63,12 @@ final class ClusterLocationTitleService {
             level: level,
             fallbackRangeKM: effectiveRangeKM
         )
-        titleCache[cacheKey] = titleParts
+        // 僅快取有成功解析到地點資訊的結果。
+        // 若反查暫時失敗時把 fallback（例如「區域 / 重疊標點」）也快取，
+        // 會讓後續即使網路恢復仍一直看到泛化標題。
+        if !componentsList.isEmpty {
+            titleCache[cacheKey] = titleParts
+        }
         return titleParts
     }
 

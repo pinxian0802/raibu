@@ -79,7 +79,6 @@ struct ClusterGridSheetView: View {
         NavigationStack(path: $navigationPath) {
             VStack(spacing: 0) {
                 SheetTopHandle(topPadding: 8, bottomPadding: 4)
-                locationTitleView
                 gridContent
             }
             .navigationBarHidden(true)
@@ -147,64 +146,71 @@ struct ClusterGridSheetView: View {
             let itemSize = (geometry.size.width - 4) / 3 // 3 columns with 2pt spacing
             
             ScrollView {
-                VStack(spacing: 16) {
-                    // 如果有圖片，顯示九宮格
-                    if !recordImageItems.isEmpty {
-                        LazyVGrid(columns: columns, spacing: 2) {
-                            ForEach(recordImageItems) { item in
-                                Button {
-                                    showSortMenu = false
-                                    if case .recordImage(let image) = item {
-                                        navigationPath.append(
-                                            ClusterDetailDestination.record(
-                                                id: image.recordId,
-                                                imageIndex: image.displayOrder
+                VStack(spacing: 0) {
+                    locationTitleView
+
+                    VStack(spacing: 16) {
+                        // 如果有圖片，顯示九宮格
+                        if !recordImageItems.isEmpty {
+                            LazyVGrid(columns: columns, spacing: 2) {
+                                ForEach(recordImageItems) { item in
+                                    Button {
+                                        showSortMenu = false
+                                        if case .recordImage(let image) = item {
+                                            navigationPath.append(
+                                                ClusterDetailDestination.record(
+                                                    id: image.recordId,
+                                                    imageIndex: image.displayOrder
+                                                )
                                             )
-                                        )
+                                        }
+                                    } label: {
+                                        gridImageView(item, size: itemSize)
                                     }
-                                } label: {
-                                    gridImageView(item, size: itemSize)
                                 }
                             }
                         }
-                    }
-                    
-                    // 如果有詢問標點，顯示列表
-                    if !askItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(askItems) { item in
-                                Button {
-                                    showSortMenu = false
+                        
+                        // 如果有詢問標點，顯示列表
+                        if !askItems.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(askItems) { item in
                                     if case .ask(let ask) = item {
-                                        navigationPath.append(
-                                            ClusterDetailDestination.ask(id: ask.id)
+                                        ClusterAskDetailPreviewCard(
+                                            askSummary: ask,
+                                            askRepository: askRepository,
+                                            replyRepository: replyRepository,
+                                            onOpenDetail: {
+                                                showSortMenu = false
+                                                navigationPath.append(
+                                                    ClusterDetailDestination.ask(id: ask.id)
+                                                )
+                                            }
                                         )
                                     }
-                                } label: {
-                                    askRowView(item)
-                                }
-                                
-                                if item.id != askItems.last?.id {
-                                    Divider()
+
+                                    if item.id != askItems.last?.id {
+                                        Divider()
+                                    }
                                 }
                             }
                         }
-                        .padding(.horizontal)
-                    }
-                    
-                    // 如果完全沒有資料，顯示提示
-                    if recordImageItems.isEmpty && askItems.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "photo.on.rectangle.angled")
-                                .font(.largeTitle)
-                                .foregroundColor(.secondary)
-                            Text("沒有可顯示的標點")
-                                .foregroundColor(.secondary)
+                        
+                        // 如果完全沒有資料，顯示提示
+                        if recordImageItems.isEmpty && askItems.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "photo.on.rectangle.angled")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.secondary)
+                                Text("沒有可顯示的標點")
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 60)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 60)
                     }
                 }
+                .padding(.top, 8)
             }
         }
     }
@@ -282,49 +288,6 @@ struct ClusterGridSheetView: View {
         }
     }
     
-    // MARK: - Ask Row View
-    
-    @ViewBuilder
-    private func askRowView(_ item: ClusterItem) -> some View {
-        if case .ask(let ask) = item {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(Color.brandOrange.opacity(0.2))
-                        .frame(width: 50, height: 50)
-                    
-                    Image(systemName: "questionmark")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.brandOrange)
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    if let title = ask.title, !title.isEmpty {
-                        Text(title)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                    } else {
-                        Text("詢問標點")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundColor(.primary)
-                    }
-                    
-                    Text(ask.question)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.secondary)
-            }
-            .padding(.vertical, 12)
-        }
-    }
-
     // MARK: - Sort Menu
 
     private var locationTitleView: some View {
@@ -342,7 +305,7 @@ struct ClusterGridSheetView: View {
                 // 地點標題：大字 primary + 小字 secondary 行
                 VStack(alignment: .leading, spacing: 6) {
                     Text(locationPrimaryTitle)
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .font(.system(size: 44, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.primary)
                         .lineLimit(1)
 
@@ -360,7 +323,7 @@ struct ClusterGridSheetView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 14)
+                .padding(.bottom, 8)
             }
 
             Divider()
@@ -370,7 +333,7 @@ struct ClusterGridSheetView: View {
     }
 
     private var locationTitleLoadingView: some View {
-        let primaryHeight = roundedFontLineHeight(size: 48, weight: .bold)
+        let primaryHeight = roundedFontLineHeight(size: 44, weight: .bold)
         let secondaryHeight = roundedFontLineHeight(size: 15, weight: .regular)
         return VStack(alignment: .leading, spacing: 6) {
             ShimmerBox(width: 220, height: primaryHeight, cornerRadius: 8)
@@ -381,7 +344,7 @@ struct ClusterGridSheetView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 14)
+        .padding(.bottom, 8)
     }
 
     private func roundedFontLineHeight(size: CGFloat, weight: UIFont.Weight) -> CGFloat {
@@ -616,4 +579,363 @@ enum ClusterDetailDestination: Hashable {
     case ask(id: String)
     case userProfile(id: String)
     case recordEdit(id: String)
+}
+
+private struct ClusterAskDetailPreviewCard: View {
+    let askSummary: MapAsk
+    let askRepository: AskRepository
+    let replyRepository: ReplyRepository
+    let onOpenDetail: () -> Void
+
+    @State private var ask: Ask?
+    @State private var replyCount: Int = 0
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+    @State private var hasStartedInitialLoad = false
+    @State private var scrolledImageId: String?
+    @State private var isDescriptionExpanded = false
+    @State private var isHeartAnimating = false
+
+    private let askTitleFont = Font.custom("PingFangTC-Medium", size: 18)
+    private let askBodyFont = Font.system(size: 16, weight: .regular, design: .rounded)
+    private let collapsedDescriptionMaxHeight: CGFloat = 110
+    private let imageCardWidth: CGFloat = 181
+    private let imageCardHeight: CGFloat = 227
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if isLoading {
+                loadingView
+            } else if let ask {
+                contentView(ask: ask)
+            } else {
+                fallbackView
+            }
+        }
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+        .task {
+            guard !hasStartedInitialLoad else { return }
+            hasStartedInitialLoad = true
+            await loadAskDetail()
+        }
+    }
+
+    private func contentView(ask: Ask) -> some View {
+        let hasImages = !(ask.images?.isEmpty ?? true)
+        return VStack(alignment: .leading, spacing: 0) {
+            authorRow(
+                displayName: ask.author?.displayName ?? "使用者",
+                avatarURL: ask.author?.avatarUrl ?? askSummary.authorAvatarUrl,
+                createdAt: ask.createdAt,
+                onTap: onOpenDetail
+            )
+
+            if let images = ask.images, !images.isEmpty {
+                let currentImage = currentVisibleImage(in: images)
+                DetailImageCarouselView(
+                    images: images,
+                    initialImageIndex: 0,
+                    cardWidth: imageCardWidth,
+                    cardHeight: imageCardHeight,
+                    layoutStyle: .edgeAligned,
+                    scrolledImageId: $scrolledImageId,
+                    onImageTap: { _, _ in onOpenDetail() }
+                )
+                .padding(.horizontal, 20)
+
+                if shouldShowImageMeta(for: currentImage) {
+                    DetailImageMetaRowView(
+                        image: currentImage,
+                        scrolledImageId: scrolledImageId,
+                        onLocationTap: { _ in onOpenDetail() }
+                    )
+                    .padding(.top, 8)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onOpenDetail()
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let title = ask.title, !title.isEmpty {
+                        Text(title)
+                            .font(askTitleFont)
+                            .foregroundColor(.primary)
+                    }
+
+                    DetailDescriptionSection(
+                        description: ask.question,
+                        isExpanded: $isDescriptionExpanded,
+                        font: askBodyFont,
+                        minHeight: nil,
+                        collapsedMaxHeight: collapsedDescriptionMaxHeight
+                    )
+
+                    if ask.status == .resolved {
+                        Label("已解決", systemImage: "checkmark.circle.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.appSuccess)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onOpenDetail()
+                }
+
+                interactionSummaryRow(
+                    isLiked: ask.userHasLiked ?? false,
+                    likeCount: ask.likeCount,
+                    replyCount: replyCount,
+                    onLikeTap: {
+                        Task { await toggleLike() }
+                    },
+                    onOpenDetail: onOpenDetail
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, hasImages ? 12 : 4)
+            .padding(.bottom, 4)
+        }
+    }
+
+    private var fallbackView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            authorRow(
+                displayName: "使用者",
+                avatarURL: askSummary.authorAvatarUrl,
+                createdAt: askSummary.createdAt,
+                onTap: onOpenDetail
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let title = askSummary.title, !title.isEmpty {
+                        Text(title)
+                            .font(askTitleFont)
+                            .foregroundColor(.primary)
+                    }
+
+                    DetailDescriptionSection(
+                        description: askSummary.question,
+                        isExpanded: $isDescriptionExpanded,
+                        font: askBodyFont,
+                        minHeight: nil,
+                        collapsedMaxHeight: collapsedDescriptionMaxHeight
+                    )
+
+                    if askSummary.status == .resolved {
+                        Label("已解決", systemImage: "checkmark.circle.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.appSuccess)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onOpenDetail()
+                }
+
+                if errorMessage != nil {
+                    Text("預覽載入失敗，仍可查看完整詳情")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
+        }
+    }
+
+    private var loadingView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                ShimmerCircle(size: 40)
+                VStack(alignment: .leading, spacing: 6) {
+                    ShimmerBox(width: 120, height: 15, cornerRadius: 4)
+                    ShimmerBox(width: 78, height: 11, cornerRadius: 4)
+                }
+                Spacer()
+            }
+
+            ShimmerBox(height: imageCardHeight, cornerRadius: 12)
+            ShimmerBox(height: 16, cornerRadius: 4)
+            ShimmerBox(width: 220, height: 16, cornerRadius: 4)
+            ShimmerBox(width: 160, height: 12, cornerRadius: 4)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func authorRow(
+        displayName: String,
+        avatarURL: String?,
+        createdAt: Date,
+        onTap: (() -> Void)? = nil
+    ) -> some View {
+        HStack(spacing: 12) {
+            KFImage(URL(string: avatarURL ?? ""))
+                .placeholder {
+                    Circle().fill(Color(.systemGray5))
+                }
+                .retry(maxCount: 2, interval: .seconds(1))
+                .cacheOriginalImage()
+                .fade(duration: 0.2)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 40, height: 40)
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                Text(DetailSheetHelpers.formatTimeAgo(createdAt))
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap?()
+        }
+    }
+
+    private func interactionSummaryRow(
+        isLiked: Bool,
+        likeCount: Int,
+        replyCount: Int,
+        onLikeTap: @escaping () -> Void,
+        onOpenDetail: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 18) {
+            Button {
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) {
+                    isHeartAnimating = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                        isHeartAnimating = false
+                    }
+                }
+                onLikeTap()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isLiked ? "heart.fill" : "heart")
+                        .foregroundColor(isLiked ? .red : .secondary)
+                        .scaleEffect(isHeartAnimating ? 1.24 : (isLiked ? 1.08 : 1.0))
+                        .animation(.spring(response: 0.28, dampingFraction: 0.6), value: isHeartAnimating)
+                        .animation(.easeInOut(duration: 0.15), value: isLiked)
+                    Text("\(likeCount)")
+                        .foregroundColor(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 18) {
+                HStack(spacing: 6) {
+                    Image(systemName: "message")
+                        .foregroundColor(.secondary)
+                    Text("\(replyCount)")
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onOpenDetail()
+            }
+        }
+        .font(.system(size: 14, weight: .medium, design: .rounded))
+        .padding(.top, 1)
+    }
+
+    private func currentVisibleImage(in images: [ImageMedia]) -> ImageMedia {
+        if let scrolledImageId,
+           let current = images.first(where: { $0.id == scrolledImageId }) {
+            return current
+        }
+        return images.first!
+    }
+
+    private func loadAskDetail() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            async let askTask = askRepository.getAskDetail(id: askSummary.id)
+            async let repliesTask = replyRepository.getRepliesForAsk(askId: askSummary.id)
+
+            let loadedAsk = try await askTask
+            let loadedReplies: [Reply]
+            do {
+                loadedReplies = try await repliesTask
+            } catch {
+                loadedReplies = []
+            }
+
+            ask = loadedAsk
+            replyCount = loadedReplies.count
+            isLoading = false
+        } catch {
+            errorMessage = error.localizedDescription
+            isLoading = false
+        }
+    }
+
+    private func toggleLike() async {
+        guard let currentAsk = ask else { return }
+
+        let wasLiked = currentAsk.userHasLiked ?? false
+        let previousLikeCount = currentAsk.likeCount
+        let optimisticLikeCount = wasLiked ? previousLikeCount - 1 : previousLikeCount + 1
+
+        ask = askWithLikeState(currentAsk, likeCount: optimisticLikeCount, isLiked: !wasLiked)
+
+        do {
+            let response = try await replyRepository.toggleLikeForAsk(id: currentAsk.id)
+            if let updatedAsk = ask {
+                ask = askWithLikeState(
+                    updatedAsk,
+                    likeCount: response.likeCount,
+                    isLiked: response.action == "liked"
+                )
+            }
+        } catch {
+            ask = askWithLikeState(currentAsk, likeCount: previousLikeCount, isLiked: wasLiked)
+        }
+    }
+
+    private func askWithLikeState(_ ask: Ask, likeCount: Int, isLiked: Bool) -> Ask {
+        Ask(
+            id: ask.id,
+            userId: ask.userId,
+            center: ask.center,
+            radiusMeters: ask.radiusMeters,
+            title: ask.title,
+            question: ask.question,
+            mainImageUrl: ask.mainImageUrl,
+            status: ask.status,
+            likeCount: likeCount,
+            viewCount: ask.viewCount,
+            createdAt: ask.createdAt,
+            updatedAt: ask.updatedAt,
+            author: ask.author,
+            images: ask.images,
+            userHasLiked: isLiked
+        )
+    }
+
+    private func shouldShowImageMeta(for image: ImageMedia) -> Bool {
+        let hasAddress = !(image.address?.isEmpty ?? true)
+        return image.location != nil || hasAddress || image.capturedAt != nil
+    }
 }

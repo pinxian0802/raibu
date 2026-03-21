@@ -24,10 +24,27 @@ struct ReplyCreateView: View {
     @State private var showErrorAlert = false
     
     var body: some View {
-        VStack(spacing: 0) {
-            SheetTopHandle()
-
-            NavigationView {
+        BottomSheetScaffold(
+            leading: {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+                .disabled(isSubmitting)
+            },
+            title: {
+                Text("新增回覆")
+                    .font(.custom("PingFangTC-Semibold", size: 37 / 2))
+                    .foregroundColor(.primary)
+            },
+            trailing: {
+                EmptyView()
+            },
+            content: {
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
@@ -48,47 +65,38 @@ struct ReplyCreateView: View {
                                     },
                                     alignment: .topLeading
                                 )
-                            
+
                             // 照片區
                             photoSection
                         }
                         .padding()
                     }
-                    
+
                     // 提交按鈕
                     submitButton
                 }
-                .navigationTitle("新增回覆")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("取消") {
-                            dismiss()
-                        }
-                        .disabled(isSubmitting)
-                    }
-                }
-                .sheet(isPresented: $showPhotoPicker) {
-                    CustomPhotoPickerView(
-                        photoPickerService: container.photoPickerService,
-                        requireGPS: false,
-                        maxSelection: 5,
-                        initialSelectedPhotos: selectedPhotos
-                    ) { photos in
-                        selectedPhotos = photos
-                    }
-                }
-                .alert("錯誤", isPresented: $showErrorAlert) {
-                    Button("確定") {
-                        errorMessage = nil
-                    }
-                } message: {
-                    Text(errorMessage ?? "")
-                }
-                .onChange(of: errorMessage) { newValue in
-                    showErrorAlert = newValue != nil
-                }
             }
+        )
+        .background(Color.appSurface)
+        .sheet(isPresented: $showPhotoPicker) {
+            CustomPhotoPickerView(
+                photoPickerService: container.photoPickerService,
+                requireGPS: false,
+                maxSelection: 5,
+                initialSelectedPhotos: selectedPhotos
+            ) { photos in
+                selectedPhotos = photos
+            }
+        }
+        .alert("錯誤", isPresented: $showErrorAlert) {
+            Button("確定") {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .onChange(of: errorMessage) { newValue in
+            showErrorAlert = newValue != nil
         }
         .presentationDragIndicator(.hidden)
     }

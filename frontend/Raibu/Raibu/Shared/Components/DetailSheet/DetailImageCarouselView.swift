@@ -9,6 +9,11 @@
 import SwiftUI
 import Kingfisher
 
+enum DetailImageCarouselLayoutStyle: Equatable {
+    case centeredSnap
+    case edgeAligned
+}
+
 /// 詳情頁圖片水平輪播
 /// 用於 Record / Ask 詳情頁的圖片展示區域
 struct DetailImageCarouselView: View {
@@ -16,6 +21,7 @@ struct DetailImageCarouselView: View {
     let initialImageIndex: Int
     let cardWidth: CGFloat
     let cardHeight: CGFloat
+    var layoutStyle: DetailImageCarouselLayoutStyle = .centeredSnap
     @Binding var scrolledImageId: String?
     var onImageTap: ((_ images: [ImageMedia], _ index: Int) -> Void)?
 
@@ -23,9 +29,12 @@ struct DetailImageCarouselView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let sideInset = max(16, (geo.size.width - cardWidth) / 2)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+            let centeredSideInset = max(16, (geo.size.width - cardWidth) / 2)
+            let edgeInset: CGFloat = 20
+            let itemSpacing: CGFloat = layoutStyle == .edgeAligned ? 12 : 10
+
+            let baseScrollView = ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: itemSpacing) {
                     ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
                         KFImage(URL(string: image.originalPublicUrl))
                             .placeholder {
@@ -61,10 +70,21 @@ struct DetailImageCarouselView: View {
                             }
                     }
                 }
+                .padding(.horizontal, layoutStyle == .edgeAligned ? edgeInset : 0)
                 .scrollTargetLayout()
             }
-            .contentMargins(.horizontal, sideInset, for: .scrollContent)
-            .scrollTargetBehavior(.viewAligned)
+
+            Group {
+                switch layoutStyle {
+                case .centeredSnap:
+                    baseScrollView
+                        .contentMargins(.horizontal, centeredSideInset, for: .scrollContent)
+                        .scrollTargetBehavior(.viewAligned)
+                case .edgeAligned:
+                    baseScrollView
+                        .padding(.horizontal, -edgeInset)
+                }
+            }
             .scrollPosition(id: $scrolledImageId)
             .onAppear {
                 if scrolledImageId == nil {

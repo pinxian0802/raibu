@@ -20,10 +20,38 @@ struct ReportSheetView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            SheetTopHandle()
-
-            NavigationStack {
+        BottomSheetScaffold(
+            leading: {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+            },
+            title: {
+                Text("檢舉內容")
+                    .font(.custom("PingFangTC-Semibold", size: 37 / 2))
+                    .foregroundColor(.primary)
+            },
+            trailing: {
+                if !viewModel.hasReported && !viewModel.showSuccess {
+                    Button("提交") {
+                        Task {
+                            await viewModel.submitReport()
+                        }
+                    }
+                    .disabled(!viewModel.canSubmit)
+                    .fontWeight(.semibold)
+                    .buttonStyle(.plain)
+                    .foregroundColor(viewModel.canSubmit ? Color.appPrimary : .secondary)
+                } else {
+                    EmptyView()
+                }
+            },
+            content: {
                 VStack(spacing: 0) {
                     if viewModel.hasReported && !viewModel.showSuccess {
                         // 已經檢舉過
@@ -36,29 +64,9 @@ struct ReportSheetView: View {
                         reportFormView
                     }
                 }
-                .navigationTitle("檢舉內容")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("取消") {
-                            dismiss()
-                        }
-                    }
-                    
-                    if !viewModel.hasReported && !viewModel.showSuccess {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("提交") {
-                                Task {
-                                    await viewModel.submitReport()
-                                }
-                            }
-                            .disabled(!viewModel.canSubmit)
-                            .fontWeight(.semibold)
-                        }
-                    }
-                }
             }
-        }
+        )
+        .background(Color.appSurface)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
         .task {
