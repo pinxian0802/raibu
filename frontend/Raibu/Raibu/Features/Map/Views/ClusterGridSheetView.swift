@@ -25,14 +25,23 @@ struct ClusterGridSheetView: View {
     @State private var locationSecondaryTitle: String? = nil
     @State private var selectedSortOption: ClusterSortOption = .latest
     @State private var showSortMenu = false
+    @State private var activeAskMenuContext: ClusterAskMenuContext? = nil
+    @State private var hiddenAskIds: Set<String> = []
+    @State private var reportAskId: String? = nil
+    @State private var pendingDeleteAskId: String? = nil
+    @State private var showAskDeleteConfirmation = false
+    @State private var askActionErrorMessage: String? = nil
     @State private var randomRanksByItemId: [String: Int] = [:]
     @State private var pendingRecordEditId: String? = nil
     @State private var pendingRecordEditOnComplete: (() -> Void)? = nil
     @State private var recordEditPrefetchedRecords: [String: Record] = [:]
+    @State private var askEditPrefetchedAsks: [String: Ask] = [:]
+    @State private var askRefreshVersions: [String: Int] = [:]
     
     private let sortMenuWidth: CGFloat = 186
     private let sortMenuShowAnimation = Animation.spring(response: 0.32, dampingFraction: 0.82)
     private let sortMenuHideAnimation = Animation.easeOut(duration: 0.18)
+    private let showsResolveAction = false
     
     // 3 columns grid
     private let columns = [
@@ -61,9 +70,33 @@ struct ClusterGridSheetView: View {
     /// 過濾詢問標點
     private var rawAskItems: [ClusterItem] {
         items.filter { item in
-            if case .ask = item { return true }
+            if case .ask(let ask) = item {
+                return !hiddenAskIds.contains(ask.id)
+            }
             return false
         }
+    }
+
+    private var isShowingReportSheet: Binding<Bool> {
+        Binding(
+            get: { reportAskId != nil },
+            set: { isPresented in
+                if !isPresented {
+                    reportAskId = nil
+                }
+            }
+        )
+    }
+
+    private var isShowingAskActionErrorAlert: Binding<Bool> {
+        Binding(
+            get: { askActionErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    askActionErrorMessage = nil
+                }
+            }
+        )
     }
     
     /// 排序後的詢問標點
@@ -121,6 +154,48 @@ struct ClusterGridSheetView: View {
                 }
             }
         }
+        .overlayPreferenceValue(ClusterAskMoreOptionsButtonAnchorPreferenceKey.self) { anchors in
+            GeometryReader { proxy in
+                if let context = activeAskMenuContext,
+                   let anchor = anchors[context.askId] {
+                    let buttonFrame = proxy[anchor]
+                    DetailMoreOptionsOverlay(
+                        buttonFrame: buttonFrame,
+                        menuWidth: sortMenuWidth,
+                        onDismiss: { closeAskMenu() }
+                    ) {
+                        askMoreOptionsMenuContent(for: context)
+                    }
+                }
+            }
+        }
+        .overlay {
+            if showAskDeleteConfirmation, pendingDeleteAskId != nil {
+                DetailDeleteConfirmation(
+                    isPresented: $showAskDeleteConfirmation,
+                    onDelete: {
+                        Task {
+                            await deletePendingAsk()
+                        }
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: isShowingReportSheet) {
+            if let reportAskId {
+                ReportSheetView(
+                    target: .ask(id: reportAskId),
+                    apiClient: container.apiClient
+                )
+            }
+        }
+        .alert("操作失敗", isPresented: isShowingAskActionErrorAlert, actions: {
+            Button("確定") {
+                askActionErrorMessage = nil
+            }
+        }, message: {
+            Text(askActionErrorMessage ?? "")
+        })
         .onAppear {
             regenerateRandomRanks()
         }
@@ -130,8 +205,8 @@ struct ClusterGridSheetView: View {
             }
         }
         .onChange(of: navigationPath.count) { _, newCount in
-            if newCount > 0, showSortMenu {
-                closeSortMenu()
+            if newCount > 0 {
+                closeAllMenus()
             }
         }
         .task(id: locationTitleTaskID) {
@@ -155,7 +230,7 @@ struct ClusterGridSheetView: View {
                             LazyVGrid(columns: columns, spacing: 2) {
                                 ForEach(recordImageItems) { item in
                                     Button {
-                                        showSortMenu = false
+                                        closeAllMenus()
                                         if case .recordImage(let image) = item {
                                             navigationPath.append(
                                                 ClusterDetailDestination.record(
@@ -180,8 +255,19 @@ struct ClusterGridSheetView: View {
                                             askSummary: ask,
                                             askRepository: askRepository,
                                             replyRepository: replyRepository,
+                                            refreshVersion: askRefreshVersions[ask.id, default: 0],
+                                            onMoreOptionsTap: { askId, prefetchedAsk, isOwner, status in
+                                                openAskMenu(
+                                                    .init(
+                                                        askId: askId,
+                                                        prefetchedAsk: prefetchedAsk,
+                                                        isOwner: isOwner,
+                                                        status: status
+                                                    )
+                                                )
+                                            },
                                             onOpenDetail: {
-                                                showSortMenu = false
+                                                closeAllMenus()
                                                 navigationPath.append(
                                                     ClusterDetailDestination.ask(id: ask.id)
                                                 )
@@ -244,6 +330,16 @@ struct ClusterGridSheetView: View {
                 askId: id,
                 askRepository: askRepository,
                 replyRepository: replyRepository
+            )
+        case .askEdit(let askId):
+            AskEditRouteView(
+                askId: askId,
+                prefetchedAsk: askEditPrefetchedAsks[askId],
+                uploadService: container.uploadService,
+                askRepository: askRepository,
+                onComplete: {
+                    askRefreshVersions[askId, default: 0] += 1
+                }
             )
         case .userProfile(let userId):
             OtherUserProfileContentView(
@@ -426,6 +522,41 @@ struct ClusterGridSheetView: View {
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
+    private func askMoreOptionsMenuContent(for context: ClusterAskMenuContext) -> some View {
+        if context.isOwner {
+            DetailOptionRow(title: "編輯", systemImage: "pencil") {
+                closeAskMenu()
+                if let prefetchedAsk = context.prefetchedAsk {
+                    askEditPrefetchedAsks[context.askId] = prefetchedAsk
+                }
+                navigationPath.append(ClusterDetailDestination.askEdit(id: context.askId))
+            }
+
+            if showsResolveAction, context.status == .active {
+                DetailOptionDivider()
+                DetailOptionRow(title: "標記為已解決", systemImage: "checkmark.circle") {
+                    closeAskMenu()
+                    Task {
+                        await resolveAsk(id: context.askId)
+                    }
+                }
+            }
+
+            DetailOptionDivider()
+            DetailOptionRow(title: "刪除", systemImage: "trash", role: .destructive) {
+                closeAskMenu()
+                pendingDeleteAskId = context.askId
+                showAskDeleteConfirmation = true
+            }
+        } else {
+            DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
+                closeAskMenu()
+                reportAskId = context.askId
+            }
+        }
+    }
+
     // MARK: - Sort Helpers
 
     private func shouldPlaceRecordImageFirst(_ lhs: MapRecordImage, before rhs: MapRecordImage) -> Bool {
@@ -531,6 +662,7 @@ struct ClusterGridSheetView: View {
 
     private func openSortMenu() {
         withAnimation(sortMenuShowAnimation) {
+            activeAskMenuContext = nil
             showSortMenu = true
         }
     }
@@ -538,6 +670,61 @@ struct ClusterGridSheetView: View {
     private func closeSortMenu() {
         withAnimation(sortMenuHideAnimation) {
             showSortMenu = false
+        }
+    }
+
+    private func openAskMenu(_ context: ClusterAskMenuContext) {
+        withAnimation(sortMenuShowAnimation) {
+            showSortMenu = false
+            activeAskMenuContext = context
+        }
+    }
+
+    private func closeAskMenu() {
+        withAnimation(sortMenuHideAnimation) {
+            activeAskMenuContext = nil
+        }
+    }
+
+    private func closeAllMenus() {
+        withAnimation(sortMenuHideAnimation) {
+            showSortMenu = false
+            activeAskMenuContext = nil
+        }
+    }
+
+    private func deletePendingAsk() async {
+        guard let askId = pendingDeleteAskId else { return }
+        do {
+            try await askRepository.deleteAsk(id: askId)
+            await MainActor.run {
+                hiddenAskIds.insert(askId)
+                askRefreshVersions[askId, default: 0] += 1
+                pendingDeleteAskId = nil
+                activeAskMenuContext = nil
+            }
+        } catch {
+            await MainActor.run {
+                askActionErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func resolveAsk(id askId: String) async {
+        do {
+            try await askRepository.updateAsk(
+                id: askId,
+                question: nil,
+                status: .resolved,
+                sortedImages: nil
+            )
+            await MainActor.run {
+                askRefreshVersions[askId, default: 0] += 1
+            }
+        } catch {
+            await MainActor.run {
+                askActionErrorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -572,11 +759,27 @@ private struct ClusterSortButtonAnchorPreferenceKey: PreferenceKey {
     }
 }
 
+private struct ClusterAskMoreOptionsButtonAnchorPreferenceKey: PreferenceKey {
+    static var defaultValue: [String: Anchor<CGRect>] = [:]
+
+    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct ClusterAskMenuContext: Equatable {
+    let askId: String
+    let prefetchedAsk: Ask?
+    let isOwner: Bool
+    let status: AskStatus?
+}
+
 // MARK: - Navigation Destination
 
 enum ClusterDetailDestination: Hashable {
     case record(id: String, imageIndex: Int)
     case ask(id: String)
+    case askEdit(id: String)
     case userProfile(id: String)
     case recordEdit(id: String)
 }
@@ -585,6 +788,8 @@ private struct ClusterAskDetailPreviewCard: View {
     let askSummary: MapAsk
     let askRepository: AskRepository
     let replyRepository: ReplyRepository
+    let refreshVersion: Int
+    let onMoreOptionsTap: (String, Ask?, Bool, AskStatus?) -> Void
     let onOpenDetail: () -> Void
 
     @State private var ask: Ask?
@@ -601,6 +806,16 @@ private struct ClusterAskDetailPreviewCard: View {
     private let collapsedDescriptionMaxHeight: CGFloat = 110
     private let imageCardWidth: CGFloat = 181
     private let imageCardHeight: CGFloat = 227
+
+    private var currentUserId: String? {
+        AuthService.shared.currentUserId
+    }
+
+    private var isOwner: Bool {
+        guard let ask else { return false }
+        guard let currentUserId else { return false }
+        return ask.userId == currentUserId
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -619,6 +834,11 @@ private struct ClusterAskDetailPreviewCard: View {
             hasStartedInitialLoad = true
             await loadAskDetail()
         }
+        .onChange(of: refreshVersion) { _, _ in
+            Task {
+                await loadAskDetail()
+            }
+        }
     }
 
     private func contentView(ask: Ask) -> some View {
@@ -628,6 +848,7 @@ private struct ClusterAskDetailPreviewCard: View {
                 displayName: ask.author?.displayName ?? "使用者",
                 avatarURL: ask.author?.avatarUrl ?? askSummary.authorAvatarUrl,
                 createdAt: ask.createdAt,
+                status: ask.status,
                 onTap: onOpenDetail
             )
 
@@ -707,6 +928,7 @@ private struct ClusterAskDetailPreviewCard: View {
                 displayName: "使用者",
                 avatarURL: askSummary.authorAvatarUrl,
                 createdAt: askSummary.createdAt,
+                status: askSummary.status,
                 onTap: onOpenDetail
             )
 
@@ -772,39 +994,57 @@ private struct ClusterAskDetailPreviewCard: View {
         displayName: String,
         avatarURL: String?,
         createdAt: Date,
+        status: AskStatus,
         onTap: (() -> Void)? = nil
     ) -> some View {
         HStack(spacing: 12) {
-            KFImage(URL(string: avatarURL ?? ""))
-                .placeholder {
-                    Circle().fill(Color(.systemGray5))
+            HStack(spacing: 12) {
+                KFImage(URL(string: avatarURL ?? ""))
+                    .placeholder {
+                        Circle().fill(Color(.systemGray5))
+                    }
+                    .retry(maxCount: 2, interval: .seconds(1))
+                    .cacheOriginalImage()
+                    .fade(duration: 0.2)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName)
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+
+                    Text(DetailSheetHelpers.formatTimeAgo(createdAt))
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundColor(.secondary)
                 }
-                .retry(maxCount: 2, interval: .seconds(1))
-                .cacheOriginalImage()
-                .fade(duration: 0.2)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 40, height: 40)
-                .clipShape(Circle())
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(displayName)
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-
-                Text(DetailSheetHelpers.formatTimeAgo(createdAt))
-                    .font(.system(size: 12, weight: .regular, design: .rounded))
-                    .foregroundColor(.secondary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onTap?()
             }
 
             Spacer()
+
+            Button {
+                onMoreOptionsTap(askSummary.id, ask, isOwner, status)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .foregroundColor(.primary)
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .frame(width: 32, height: 32, alignment: .center)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .anchorPreference(
+                key: ClusterAskMoreOptionsButtonAnchorPreferenceKey.self,
+                value: .bounds
+            ) { [askSummary.id: $0] }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onTap?()
-        }
     }
 
     private func interactionSummaryRow(

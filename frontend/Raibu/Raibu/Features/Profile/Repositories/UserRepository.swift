@@ -34,7 +34,8 @@ class UserRepository: UserRepositoryProtocol {
             displayName: displayName,
             avatarUrl: avatarUrl
         )
-        let profile: UserProfile = try await apiClient.patch(.updateMe, body: request)
+        let _: UpdateProfileResponse = try await apiClient.patch(.updateMe, body: request)
+        let profile = try await getMe()
         return profile.toUser()
     }
     
@@ -82,12 +83,17 @@ struct UpdateProfileRequest: Codable {
     }
 }
 
+struct UpdateProfileResponse: Codable {
+    let success: Bool
+}
+
 extension UserProfile {
     func toUser() -> User {
         return User(
             id: id,
             displayName: displayName,
             avatarUrl: avatarUrl,
+            bio: bio,
             totalViews: totalViews,
             createdAt: createdAt
         )

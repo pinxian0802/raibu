@@ -7,11 +7,14 @@
 
 import SwiftUI
 import PhotosUI
+import Kingfisher
 
 /// 頭貼選擇器視圖
 struct AvatarPickerView: View {
     @Binding var selectedImage: UIImage?
+    var currentAvatarURL: String? = nil
     var size: CGFloat = 120
+    var showsCameraBadge: Bool = true
     
     @State private var selectedItem: PhotosPickerItem?
     @State private var isLoading = false
@@ -26,28 +29,37 @@ struct AvatarPickerView: View {
                         .scaledToFill()
                         .frame(width: size, height: size)
                         .clipShape(Circle())
+                } else if let avatarURLString = currentAvatarURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !avatarURLString.isEmpty,
+                          let avatarURL = URL(string: avatarURLString) {
+                    KFImage(avatarURL)
+                        .placeholder {
+                            defaultAvatarPlaceholder
+                        }
+                        .retry(maxCount: 2, interval: .seconds(1))
+                        .cacheOriginalImage()
+                        .fade(duration: 0.2)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size, height: size)
+                        .clipShape(Circle())
                 } else {
                     // 預設圖示
-                    Circle()
-                        .fill(Color(.systemGray5))
-                        .frame(width: size, height: size)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: size * 0.4))
-                                .foregroundColor(.gray)
-                        )
+                    defaultAvatarPlaceholder
                 }
                 
-                // 相機圖示 overlay
-                Circle()
-                    .fill(Color.brandBlue)
-                    .frame(width: size * 0.3, height: size * 0.3)
-                    .overlay(
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: size * 0.12))
-                            .foregroundColor(.appOnPrimary)
-                    )
-                    .offset(x: size * 0.35, y: size * 0.35)
+                if showsCameraBadge {
+                    // 相機圖示 overlay
+                    Circle()
+                        .fill(Color.brandBlue)
+                        .frame(width: size * 0.3, height: size * 0.3)
+                        .overlay(
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: size * 0.12))
+                                .foregroundColor(.appOnPrimary)
+                        )
+                        .offset(x: size * 0.35, y: size * 0.35)
+                }
                 
                 // Loading overlay
                 if isLoading {
@@ -90,6 +102,17 @@ struct AvatarPickerView: View {
             print("Failed to load image: \(error)")
             await MainActor.run { isLoading = false }
         }
+    }
+
+    private var defaultAvatarPlaceholder: some View {
+        Circle()
+            .fill(Color(.systemGray5))
+            .frame(width: size, height: size)
+            .overlay(
+                Image(systemName: "person.fill")
+                    .font(.system(size: size * 0.4))
+                    .foregroundColor(.gray)
+            )
     }
     
     /// 裁切為正方形（包含方向修正）

@@ -26,8 +26,8 @@ final class MapIconFactory {
     /// 圓角半徑
     static let cornerRadius: CGFloat = 12
 
-    /// 詢問標點外觀設定（對齊 CreateAsk 預覽）
-    private static let askAvatarSize: CGFloat = 64
+    /// 詢問標點外觀設定（地圖上圖片尺寸對齊紀錄標點）
+    private static var askAvatarSize: CGFloat { iconSize }
     private static var askAvatarCornerRadius: CGFloat {
         cornerRadius * (askAvatarSize / iconSize)
     }

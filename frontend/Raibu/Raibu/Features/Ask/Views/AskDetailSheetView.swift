@@ -44,6 +44,7 @@ struct AskDetailSheetView: View {
     private let moreOptionsMenuWidth: CGFloat = 186
     private let contentTopPaddingWithoutBackButton: CGFloat = 10
     private let contentTopPaddingWithBackButton: CGFloat = 2
+    private let showsResolveAction = false
 
     init(askId: String, askRepository: AskRepository, replyRepository: ReplyRepository) {
         self.askId = askId
@@ -331,7 +332,7 @@ struct AskDetailSheetView: View {
                 }
             }
 
-            if viewModel.ask?.status == .active {
+            if showsResolveAction, viewModel.ask?.status == .active {
                 DetailOptionDivider()
                 DetailOptionRow(title: "標記為已解決", systemImage: "checkmark.circle") {
                     showMoreOptions = false

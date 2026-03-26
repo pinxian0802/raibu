@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import Kingfisher
+import UIKit
 
 /// 個人頁面視圖
 struct ProfileFullView: View {
@@ -18,61 +19,91 @@ struct ProfileFullView: View {
     @StateObject private var viewModel: ProfileViewModel
     
     @State private var selectedTab = 0
-    @State private var showLogoutConfirmation = false
     @State private var showMoreOptions = false
+    @State private var isEditingProfile = false
+    @State private var draftDisplayName = ""
+    @State private var draftBio = ""
+    @State private var draftAvatarImage: UIImage?
+    @State private var isSavingProfile = false
+    @State private var profileEditError: String?
+    @State private var isBioExpanded = false
+    @State private var collapsedBioTextWidth: CGFloat = 0
+    @FocusState private var focusedEditField: EditField?
+    private let moreOptionsMenuWidth: CGFloat = 186
+    private let editTransition = Animation.spring(response: 0.38, dampingFraction: 0.88)
+    private let maxDisplayNameLength = 15
+    private let maxBioLength = 100
+    private let collapsedBioCharacterLimit = 30
+    
+    private enum EditField: Hashable {
+        case displayName
+        case bio
+    }
+
     init(userRepository: UserRepository) {
         _viewModel = StateObject(wrappedValue: ProfileViewModel(userRepository: userRepository))
     }
     
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            profileTopBar
+
             ScrollView {
                 VStack(spacing: 24) {
                     // 個人資料區塊（頭像 + 名字 + 統計）
                     profileHeader
-                    
-                    VStack(spacing: 2) {
-                        // 標籤切換
-                        tabSection
-                        
-                        // 列表內容
-                        listContent
+
+                    if isEditingProfile {
+                        editProfilePanel
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                    removal: .opacity.combined(with: .move(edge: .bottom))
+                                )
+                            )
+                    } else {
+                        VStack(spacing: 2) {
+                            // 標籤切換
+                            tabSection
+
+                            // 列表內容
+                            listContent
+                        }
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                removal: .opacity.combined(with: .move(edge: .bottom))
+                            )
+                        )
                     }
                 }
-                .padding(.vertical)
+                .padding(.top, 6)
+                .padding(.bottom, 16)
             }
             .refreshable {
                 // 下拉刷新：只載入 profile 和當前 tab 的資料
                 await viewModel.refreshAll(currentTab: selectedTab)
             }
-            .navigationTitle("個人資訊")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button(role: .destructive) {
-                            showLogoutConfirmation = true
-                        } label: {
-                            Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+        }
+        .animation(editTransition, value: isEditingProfile)
+        .overlayPreferenceValue(ProfileMoreOptionsButtonAnchorPreferenceKey.self) { anchor in
+            GeometryReader { proxy in
+                if showMoreOptions, let anchor {
+                    let buttonFrame = proxy[anchor]
+                    DetailMoreOptionsOverlay(
+                        buttonFrame: buttonFrame,
+                        menuWidth: moreOptionsMenuWidth,
+                        onDismiss: { showMoreOptions = false }
+                    ) {
+                        moreOptionsMenuContent
                     }
                 }
             }
-            .confirmationDialog("確定要登出嗎？", isPresented: $showLogoutConfirmation) {
-                Button("登出", role: .destructive) {
-                    Task {
-                        await authService.signOut()
-                    }
-                }
-                Button("取消", role: .cancel) {}
-            }
-
         }
         .onAppear {
             // 首次進入頁面時重置到「我的紀錄」標籤
             selectedTab = 0
+            isBioExpanded = false
             
             // 首次進入頁面時載入資料
             Task {
@@ -85,6 +116,7 @@ struct ProfileFullView: View {
             // 當從其他頁面切換到個人頁面時，刷新資料
             if newTab == 2 {
                 selectedTab = 0  // 重置到「我的紀錄」標籤
+                isBioExpanded = false
                 
                 Task {
                     // 背景更新資料（並行執行）
@@ -92,7 +124,12 @@ struct ProfileFullView: View {
                     async let recordsTask: () = viewModel.loadMyRecords(forceRefresh: true)
                     _ = await (profileTask, recordsTask)
                 }
+            } else {
+                isBioExpanded = false
             }
+        }
+        .onDisappear {
+            isBioExpanded = false
         }
         .onChange(of: selectedTab) { oldTab, newTab in
             // 只有當 tab 真正改變時才載入
@@ -117,6 +154,57 @@ struct ProfileFullView: View {
         }
     }
     
+    private var profileTopBar: some View {
+        HStack {
+            Spacer()
+            profileMoreOptionsButton
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 2)
+        .padding(.bottom, 0)
+    }
+    
+    private var profileMoreOptionsButton: some View {
+        Button {
+            guard !isEditingProfile else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                showMoreOptions.toggle()
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .foregroundColor(.primary)
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 32, height: 32, alignment: .center)
+        .contentShape(Rectangle())
+        .opacity(isEditingProfile ? 0.35 : 1.0)
+        .disabled(isEditingProfile)
+        .anchorPreference(key: ProfileMoreOptionsButtonAnchorPreferenceKey.self, value: .bounds) { $0 }
+    }
+    
+    @ViewBuilder
+    private var moreOptionsMenuContent: some View {
+        DetailOptionRow(title: "編輯個人資料", systemImage: "square.and.pencil") {
+            withAnimation(.easeOut(duration: 0.16)) {
+                showMoreOptions = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(editTransition) {
+                    beginProfileEditing()
+                }
+            }
+        }
+
+        DetailOptionDivider()
+        DetailOptionRow(title: "登出", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+            showMoreOptions = false
+            Task {
+                await authService.signOut()
+            }
+        }
+    }
+    
     // MARK: - Profile Header (頭像左邊、資訊右邊的水平排版)
     
     private var profileHeader: some View {
@@ -125,77 +213,96 @@ struct ProfileFullView: View {
                 profileHeaderSkeleton
                     .transition(.opacity)
             } else {
-                VStack(spacing: 36) {
+                VStack(spacing: isEditingProfile ? 14 : 36) {
                     // 上方：頭像 + 名字 (名片樣式)
-                    HStack(spacing: 16) {
+                    HStack(alignment: .top, spacing: 16) {
                         // 頭像
-                        KFImage(URL(string: viewModel.profile?.avatarUrl ?? ""))
-                            .placeholder {
-                                Circle()
-                                    .fill(Color(.systemGray4))
-                                    .overlay(
-                                        Image(systemName: "person.fill")
-                                            .font(.system(size: 65))
-                                            .foregroundColor(.secondary)
-                                   )
-                            }
-                            .retry(maxCount: 2, interval: .seconds(1))
-                            .cacheOriginalImage()
-                            .fade(duration: 0.2)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 100, height: 100)
-                            .clipShape(Circle())
+                        profileAvatarView
                         
                         // 名稱與描述
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(viewModel.profile?.displayName ?? "使用者")
-                                .font(.system(size: 20, weight: .bold))
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(profileDisplayNameText)
+                                .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.primary)
                                 .multilineTextAlignment(.leading)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
                             
-                            if let bio = viewModel.profile?.bio, !bio.isEmpty {
-                                Text(bio)
+                            if isEditingProfile {
+                                Text(profileBioPreviewText)
                                     .font(.system(size: 14))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(2)
+                                    .foregroundColor(.primary)
                                     .multilineTextAlignment(.leading)
+                            } else {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(isBioExpanded ? profileBioPreviewText : collapsedProfileBioText)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.primary)
+                                        .multilineTextAlignment(.leading)
+                                        .background {
+                                            GeometryReader { proxy in
+                                                Color.clear
+                                                    .onAppear {
+                                                        updateCollapsedBioTextWidth(proxy.size.width)
+                                                    }
+                                                    .onChange(of: proxy.size.width) { _, newWidth in
+                                                        updateCollapsedBioTextWidth(newWidth)
+                                                    }
+                                            }
+                                        }
+
+                                    if hasExpandableBio {
+                                        Button {
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                isBioExpanded.toggle()
+                                            }
+                                        } label: {
+                                            Text(isBioExpanded ? "收合" : "更多...")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
                             }
                         }
-                        
-                        Spacer()
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(20)
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(16)
                     
                     // 下方：統計數據
-                    HStack(spacing: 0) {
-                        profileStatItem(
-                            value: viewModel.profile?.totalRecords ?? 0,
-                            label: "紀錄"
-                        )
-                        .frame(maxWidth: .infinity)
-                        
-                        statSeparator
-                        
-                        profileStatItem(
-                            value: viewModel.profile?.totalAsks ?? 0,
-                            label: "詢問"
-                        )
-                        .frame(maxWidth: .infinity)
-                        
-                        statSeparator
-                        
-                        profileStatItem(
-                            value: viewModel.profile?.totalLikes ?? 0,
-                            label: "按讚"
-                        )
-                        .frame(maxWidth: .infinity)
+                    if !isEditingProfile {
+                        HStack(spacing: 0) {
+                            profileStatItem(
+                                value: viewModel.profile?.totalRecords ?? 0,
+                                label: "紀錄"
+                            )
+                            .frame(maxWidth: .infinity)
+                            
+                            statSeparator
+                            
+                            profileStatItem(
+                                value: viewModel.profile?.totalAsks ?? 0,
+                                label: "詢問"
+                            )
+                            .frame(maxWidth: .infinity)
+                            
+                            statSeparator
+                            
+                            profileStatItem(
+                                value: viewModel.profile?.totalLikes ?? 0,
+                                label: "按讚"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .transition(.opacity)
                     }
                 }
                 .padding(.horizontal, 24)
-                .padding(.vertical, 20)
+                .padding(.top, 0)
+                .padding(.bottom, 20)
                 .transition(.opacity)
             }
         }
@@ -242,7 +349,8 @@ struct ProfileFullView: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 20)
+        .padding(.top, 0)
+        .padding(.bottom, 20)
     }
     
     private var statSeparator: some View {
@@ -505,10 +613,404 @@ struct ProfileFullView: View {
     
     // MARK: - Helpers
     
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd"
-        return formatter.string(from: date)
+    @ViewBuilder
+    private var profileAvatarView: some View {
+        if let selectedImage = draftAvatarImage, isEditingProfile {
+            Image(uiImage: selectedImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 100, height: 100)
+                .clipShape(Circle())
+        } else {
+            KFImage(URL(string: viewModel.profile?.avatarUrl ?? ""))
+                .placeholder {
+                    Circle()
+                        .fill(Color(.systemGray4))
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 65))
+                                .foregroundColor(.secondary)
+                        )
+                }
+                .retry(maxCount: 2, interval: .seconds(1))
+                .cacheOriginalImage()
+                .fade(duration: 0.2)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 100, height: 100)
+                .clipShape(Circle())
+        }
+    }
+
+    private var profileDisplayNameText: String {
+        let text: String
+        if isEditingProfile {
+            text = draftDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            text = viewModel.profile?.displayName ?? ""
+        }
+        return text
+    }
+
+    private var profileRawBioText: String {
+        let raw: String
+        if isEditingProfile {
+            raw = draftBio
+        } else {
+            raw = viewModel.profile?.bio ?? ""
+        }
+        return raw
+    }
+
+    private var normalizedProfileBioText: String {
+        let raw = profileRawBioText
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed
+    }
+
+    private var profileBioPreviewText: String {
+        normalizedProfileBioText
+    }
+
+    private var hasExpandableBio: Bool {
+        let text = normalizedProfileBioText
+        guard !text.isEmpty else { return false }
+        guard collapsedBioTextWidth > 0 else {
+            return text.count > collapsedBioCharacterLimit
+        }
+        return !doesBioTextFitInTwoLines(text, width: collapsedBioTextWidth)
+    }
+
+    private var collapsedProfileBioText: String {
+        let text = normalizedProfileBioText
+        guard !text.isEmpty else { return "" }
+        guard collapsedBioTextWidth > 0 else {
+            return String(text.prefix(collapsedBioCharacterLimit))
+        }
+        guard !doesBioTextFitInTwoLines(text, width: collapsedBioTextWidth) else {
+            return text
+        }
+
+        let characters = Array(text)
+        var low = 0
+        var high = characters.count
+        var best = 0
+
+        while low <= high {
+            let mid = (low + high) / 2
+            let candidate = String(characters.prefix(mid))
+            if doesBioTextFitInTwoLines(candidate, width: collapsedBioTextWidth) {
+                best = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+
+        return String(characters.prefix(best)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func updateCollapsedBioTextWidth(_ width: CGFloat) {
+        let normalizedWidth = max(0, width.rounded(.down))
+        guard abs(collapsedBioTextWidth - normalizedWidth) > 0.5 else { return }
+        collapsedBioTextWidth = normalizedWidth
+    }
+
+    private func doesBioTextFitInTwoLines(_ text: String, width: CGFloat) -> Bool {
+        guard width > 0 else { return true }
+        guard !text.isEmpty else { return true }
+
+        let font = UIFont.systemFont(ofSize: 14)
+        let boundingRect = (text as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font],
+            context: nil
+        )
+        let maxHeight = font.lineHeight * 2 + 0.5
+        return boundingRect.height <= maxHeight
+    }
+
+    private var isSaveProfileButtonDisabled: Bool {
+        isSavingProfile || draftDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var remainingDisplayNameCount: Int {
+        max(0, maxDisplayNameLength - draftDisplayName.count)
+    }
+
+    private var remainingBioCount: Int {
+        max(0, maxBioLength - draftBio.count)
+    }
+
+    private var editProfilePanel: some View {
+        VStack(spacing: 0) {
+            Color(.systemBackground)
+                .overlay(alignment: .topLeading) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack(spacing: 10) {
+                            Button {
+                                cancelProfileEditing()
+                            } label: {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(.primary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isSavingProfile)
+
+                            Text("編輯個人資料")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.primary)
+
+                            Spacer()
+                        }
+
+                        HStack(alignment: .center, spacing: 12) {
+                            Text("頭像")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.primary)
+
+                            Spacer()
+
+                            AvatarPickerView(
+                                selectedImage: $draftAvatarImage,
+                                currentAvatarURL: viewModel.profile?.avatarUrl,
+                                size: 84,
+                                showsCameraBadge: false
+                            )
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("姓名")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.primary)
+
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                TextField("請輸入姓名", text: $draftDisplayName)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 16))
+                                    .focused($focusedEditField, equals: .displayName)
+                                    .onChange(of: draftDisplayName) { _, newValue in
+                                        if newValue.count > maxDisplayNameLength {
+                                            draftDisplayName = String(newValue.prefix(maxDisplayNameLength))
+                                        }
+                                    }
+
+                                Text("\(remainingDisplayNameCount)")
+                                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.top, 2)
+                            .padding(.bottom, 8)
+                            .overlay(alignment: .bottom) {
+                                Rectangle()
+                                    .fill(focusedEditField == .displayName ? Color.primary : Color(.systemGray3))
+                                    .frame(height: 1)
+                                }
+                            .animation(.easeInOut(duration: 0.16), value: focusedEditField)
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("簡介")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.primary)
+
+                            HStack(alignment: .bottom, spacing: 8) {
+                                TextField("介紹一下自己", text: $draftBio, axis: .vertical)
+                                    .lineLimit(3...6)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 16))
+                                    .focused($focusedEditField, equals: .bio)
+                                    .onChange(of: draftBio) { _, newValue in
+                                        if newValue.count > maxBioLength {
+                                            draftBio = String(newValue.prefix(maxBioLength))
+                                        }
+                                    }
+
+                                Text("\(remainingBioCount)")
+                                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                    .padding(.bottom, 2)
+                            }
+                            .padding(.top, 2)
+                            .padding(.bottom, 8)
+                            .overlay(alignment: .bottom) {
+                                Rectangle()
+                                    .fill(focusedEditField == .bio ? Color.primary : Color(.systemGray3))
+                                    .frame(height: 1)
+                                }
+                            .animation(.easeInOut(duration: 0.16), value: focusedEditField)
+                        }
+
+                        if let profileEditError, !profileEditError.isEmpty {
+                            Text(profileEditError)
+                                .font(.system(size: 13))
+                                .foregroundColor(.appDanger)
+                        }
+
+                        Button {
+                            Task { await saveProfileEdits() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if isSavingProfile {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
+                                    Text("完成")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 12)
+                            .background(isSaveProfileButtonDisabled ? Color.appDisabled : Color.primary)
+                            .foregroundColor(.appOnPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .disabled(isSaveProfileButtonDisabled)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 18)
+                    .padding(.bottom, 28)
+                }
+        }
+        .frame(maxWidth: .infinity, minHeight: 420, alignment: .topLeading)
+    }
+
+    private func beginProfileEditing() {
+        guard let profile = viewModel.profile else { return }
+        draftDisplayName = String(profile.displayName.prefix(maxDisplayNameLength))
+        draftBio = String((profile.bio ?? "").prefix(maxBioLength))
+        draftAvatarImage = nil
+        profileEditError = nil
+        focusedEditField = nil
+        isBioExpanded = false
+        isEditingProfile = true
+    }
+
+    private func cancelProfileEditing() {
+        guard !isSavingProfile else { return }
+        focusedEditField = nil
+        profileEditError = nil
+        draftAvatarImage = nil
+        isBioExpanded = false
+        withAnimation(editTransition) {
+            isEditingProfile = false
+        }
+    }
+
+    private func saveProfileEdits() async {
+        guard !isSavingProfile else { return }
+        focusedEditField = nil
+
+        let trimmedName = draftDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            profileEditError = "姓名不可為空"
+            return
+        }
+        guard trimmedName.count <= maxDisplayNameLength else {
+            profileEditError = "姓名最多 \(maxDisplayNameLength) 字"
+            return
+        }
+        let trimmedBio = draftBio.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedBio.count <= maxBioLength else {
+            profileEditError = "簡介最多 \(maxBioLength) 字"
+            return
+        }
+
+        isSavingProfile = true
+        profileEditError = nil
+
+        do {
+            var uploadedAvatarURL: String?
+            if let avatarImage = draftAvatarImage {
+                uploadedAvatarURL = try await uploadAvatarImage(avatarImage)
+            }
+
+            let request = ProfileEditUpdateRequest(
+                displayName: trimmedName,
+                avatarUrl: uploadedAvatarURL,
+                bio: trimmedBio
+            )
+            let _: ProfileEditUpdateResponse = try await container.apiClient.patch(.updateMe, body: request)
+
+            await viewModel.loadProfile(forceRefresh: true)
+            if let refreshedProfile = viewModel.profile {
+                authService.cacheCurrentUserProfile(refreshedProfile.toUser())
+            }
+
+            draftAvatarImage = nil
+            isBioExpanded = false
+            withAnimation(editTransition) {
+                isEditingProfile = false
+            }
+        } catch {
+            profileEditError = "儲存失敗：\(error.localizedDescription)"
+        }
+
+        isSavingProfile = false
+    }
+
+    private func uploadAvatarImage(_ image: UIImage) async throws -> String {
+        let credential: AvatarUploadCredential = try await container.apiClient.post(
+            .uploadAvatar,
+            body: AvatarUploadRequest(fileType: "image/jpeg")
+        )
+
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            throw ProfileEditError.imageConversionFailed
+        }
+
+        guard let uploadURL = URL(string: credential.uploadUrl) else {
+            throw ProfileEditError.invalidUploadUrl
+        }
+
+        try await container.apiClient.uploadToPresignedURL(
+            data: imageData,
+            url: uploadURL,
+            contentType: "image/jpeg"
+        )
+
+        return credential.publicUrl
+    }
+}
+
+private struct ProfileEditUpdateRequest: Encodable {
+    let displayName: String
+    let avatarUrl: String?
+    let bio: String
+
+    enum CodingKeys: String, CodingKey {
+        case displayName = "display_name"
+        case avatarUrl = "avatar_url"
+        case bio
+    }
+}
+
+private struct ProfileEditUpdateResponse: Decodable {
+    let success: Bool
+}
+
+private enum ProfileEditError: LocalizedError {
+    case imageConversionFailed
+    case invalidUploadUrl
+
+    var errorDescription: String? {
+        switch self {
+        case .imageConversionFailed:
+            return "圖片轉換失敗"
+        case .invalidUploadUrl:
+            return "無效的上傳網址"
+        }
+    }
+}
+
+private struct ProfileMoreOptionsButtonAnchorPreferenceKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? = nil
+    
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
     }
 }
 
