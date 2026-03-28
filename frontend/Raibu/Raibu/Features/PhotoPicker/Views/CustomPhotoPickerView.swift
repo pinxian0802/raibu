@@ -15,6 +15,7 @@ struct CustomPhotoPickerView: View {
     @StateObject private var viewModel: PhotoPickerViewModel
     
     let onComplete: ([SelectedPhoto]) -> Void
+    let showsSelectedPreview: Bool
     
     @State private var isLoadingData = false
 
@@ -22,18 +23,21 @@ struct CustomPhotoPickerView: View {
         photoPickerService: PhotoPickerService,
         requireGPS: Bool = false,
         maxSelection: Int = 10,
+        showsSelectedPreview: Bool? = nil,
         initialSelectedPhotos: [SelectedPhoto] = [],
         initialSelectedAssetIDs: [String]? = nil,
         onComplete: @escaping ([SelectedPhoto]) -> Void
     ) {
         let initialSelectedAssetIDs = initialSelectedAssetIDs
             ?? initialSelectedPhotos.map { $0.asset.localIdentifier }
+        let resolvedShowsSelectedPreview = showsSelectedPreview ?? (maxSelection > 1)
         _viewModel = StateObject(wrappedValue: PhotoPickerViewModel(
             photoPickerService: photoPickerService,
             requireGPS: requireGPS,
             maxSelection: maxSelection,
             initialSelectedAssetIDs: initialSelectedAssetIDs
         ))
+        self.showsSelectedPreview = resolvedShowsSelectedPreview
         self.onComplete = onComplete
     }
     
@@ -43,7 +47,7 @@ struct CustomPhotoPickerView: View {
             sheetHeader
 
             // 已選照片預覽區
-            if !viewModel.selectedPhotos.isEmpty {
+            if showsSelectedPreview && !viewModel.selectedPhotos.isEmpty {
                 selectedPhotosPreviewSection
                     .padding(.horizontal, 16)
                     .padding(.top, 12)

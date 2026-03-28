@@ -20,17 +20,24 @@ struct ProfileFullView: View {
     
     @State private var selectedTab = 0
     @State private var showMoreOptions = false
-    @State private var isEditingProfile = false
-    @State private var draftDisplayName = ""
-    @State private var draftBio = ""
+    @State private var activeAskMenuContext: ProfileAskMenuContext? = nil
     @State private var draftAvatarImage: UIImage?
     @State private var isSavingProfile = false
     @State private var profileEditError: String?
+    @State private var reportAskId: String? = nil
+    @State private var pendingDeleteAskId: String? = nil
+    @State private var showAskDeleteConfirmation = false
+    @State private var askActionErrorMessage: String? = nil
+    @State private var localAskRefreshVersions: [String: Int] = [:]
+    @State private var hiddenAskIds: Set<String> = []
     @State private var isBioExpanded = false
     @State private var collapsedBioTextWidth: CGFloat = 0
     @FocusState private var focusedEditField: EditField?
     private let moreOptionsMenuWidth: CGFloat = 186
     private let editTransition = Animation.spring(response: 0.38, dampingFraction: 0.88)
+    private let askMenuShowAnimation = Animation.spring(response: 0.32, dampingFraction: 0.82)
+    private let askMenuHideAnimation = Animation.easeOut(duration: 0.18)
+    private let showsResolveAction = false
     private let maxDisplayNameLength = 15
     private let maxBioLength = 100
     private let collapsedBioCharacterLimit = 30
@@ -43,13 +50,42 @@ struct ProfileFullView: View {
     init(userRepository: UserRepository) {
         _viewModel = StateObject(wrappedValue: ProfileViewModel(userRepository: userRepository))
     }
+
+    private var isEditingProfile: Bool {
+        get { navigationCoordinator.isProfileEditing }
+        nonmutating set { navigationCoordinator.isProfileEditing = newValue }
+    }
+
+    private var draftDisplayName: String {
+        get { navigationCoordinator.profileEditDraftDisplayName }
+        nonmutating set { navigationCoordinator.profileEditDraftDisplayName = newValue }
+    }
+
+    private var draftBio: String {
+        get { navigationCoordinator.profileEditDraftBio }
+        nonmutating set { navigationCoordinator.profileEditDraftBio = newValue }
+    }
+
+    private var draftDisplayNameBinding: Binding<String> {
+        Binding(
+            get: { draftDisplayName },
+            set: { draftDisplayName = $0 }
+        )
+    }
+
+    private var draftBioBinding: Binding<String> {
+        Binding(
+            get: { draftBio },
+            set: { draftBio = $0 }
+        )
+    }
     
     var body: some View {
         VStack(spacing: 0) {
             profileTopBar
 
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: isEditingProfile ? 12 : 24) {
                     // 個人資料區塊（頭像 + 名字 + 統計）
                     profileHeader
 
@@ -100,6 +136,49 @@ struct ProfileFullView: View {
                 }
             }
         }
+        .overlayPreferenceValue(ClusterAskMoreOptionsButtonAnchorPreferenceKey.self) { anchors in
+            GeometryReader { proxy in
+                if selectedTab == 1,
+                   let context = activeAskMenuContext,
+                   let anchor = anchors[context.askId] {
+                    let buttonFrame = proxy[anchor]
+                    DetailMoreOptionsOverlay(
+                        buttonFrame: buttonFrame,
+                        menuWidth: moreOptionsMenuWidth,
+                        onDismiss: { closeAskMenu() }
+                    ) {
+                        askMoreOptionsMenuContent(for: context)
+                    }
+                }
+            }
+        }
+        .overlay {
+            if showAskDeleteConfirmation, pendingDeleteAskId != nil {
+                DetailDeleteConfirmation(
+                    isPresented: $showAskDeleteConfirmation,
+                    onDelete: {
+                        Task {
+                            await deletePendingAsk()
+                        }
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: isShowingAskReportSheet) {
+            if let reportAskId {
+                ReportSheetView(
+                    target: .ask(id: reportAskId),
+                    apiClient: container.apiClient
+                )
+            }
+        }
+        .alert("操作失敗", isPresented: isShowingAskActionErrorAlert, actions: {
+            Button("確定") {
+                askActionErrorMessage = nil
+            }
+        }, message: {
+            Text(askActionErrorMessage ?? "")
+        })
         .onAppear {
             // 首次進入頁面時重置到「我的紀錄」標籤
             selectedTab = 0
@@ -115,8 +194,8 @@ struct ProfileFullView: View {
         .onChange(of: navigationCoordinator.selectedTab) { _, newTab in
             // 當從其他頁面切換到個人頁面時，刷新資料
             if newTab == 2 {
-                selectedTab = 0  // 重置到「我的紀錄」標籤
                 isBioExpanded = false
+                selectedTab = 0  // 重置到「我的紀錄」標籤
                 
                 Task {
                     // 背景更新資料（並行執行）
@@ -126,14 +205,18 @@ struct ProfileFullView: View {
                 }
             } else {
                 isBioExpanded = false
+                resetProfileEditingStateForPageSwitch()
             }
         }
         .onDisappear {
             isBioExpanded = false
+            closeAllMenus()
+            resetProfileEditingStateForPageSwitch()
         }
         .onChange(of: selectedTab) { oldTab, newTab in
             // 只有當 tab 真正改變時才載入
             guard oldTab != newTab else { return }
+            closeAskMenu()
             
             // Tab 切換時載入對應資料
             Task {
@@ -153,6 +236,36 @@ struct ProfileFullView: View {
             await viewModel.loadMyAsks(forceRefresh: viewModel.hasLoadedAsks)
         }
     }
+
+    private var visibleMyAsks: [Ask] {
+        viewModel.myAsks.filter { !hiddenAskIds.contains($0.id) }
+    }
+
+    private var isShowingAskReportSheet: Binding<Bool> {
+        Binding(
+            get: { reportAskId != nil },
+            set: { isPresented in
+                if !isPresented {
+                    reportAskId = nil
+                }
+            }
+        )
+    }
+
+    private var isShowingAskActionErrorAlert: Binding<Bool> {
+        Binding(
+            get: { askActionErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    askActionErrorMessage = nil
+                }
+            }
+        )
+    }
+
+    private func askRefreshVersion(for askId: String) -> Int {
+        detailSheetRouter.askRefreshVersion(for: askId) + localAskRefreshVersions[askId, default: 0]
+    }
     
     private var profileTopBar: some View {
         HStack {
@@ -168,6 +281,7 @@ struct ProfileFullView: View {
         Button {
             guard !isEditingProfile else { return }
             withAnimation(.easeInOut(duration: 0.15)) {
+                activeAskMenuContext = nil
                 showMoreOptions.toggle()
             }
         } label: {
@@ -478,15 +592,14 @@ struct ProfileFullView: View {
     private var asksGrid: some View {
         Group {
             if !viewModel.hasLoadedAsks {
-                // 載入中骨架屏
-                LazyVGrid(columns: gridColumns, spacing: 2) {
-                    ForEach(0..<9, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color(.systemGray5))
-                            .aspectRatio(1, contentMode: .fit)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(0..<3, id: \.self) { index in
+                        askListSkeletonItem
+                        if index != 2 {
+                            Divider()
+                        }
                     }
                 }
-                .padding(.horizontal, 2)
             } else if viewModel.myAsks.isEmpty {
                 // 載入完成且為空
                 emptyStateView(
@@ -494,19 +607,43 @@ struct ProfileFullView: View {
                     title: "還沒有詢問",
                     subtitle: "在地圖上長按開始提問！"
                 )
+            } else if visibleMyAsks.isEmpty {
+                // 目前列表已刪除完（等待重新整理）
+                emptyStateView(
+                    icon: "questionmark.circle",
+                    title: "還沒有詢問",
+                    subtitle: "在地圖上長按開始提問！"
+                )
             } else {
-                // 載入完成且有資料
-                LazyVGrid(columns: gridColumns, spacing: 2) {
-                    ForEach(viewModel.myAsks) { ask in
-                        Button {
-                            detailSheetRouter.open(.ask(id: ask.id))
-                        } label: {
-                            askGridItem(ask)
+                // 載入完成且有資料：改為和群聚 Sheet 一樣的列表卡片
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(visibleMyAsks.enumerated()), id: \.element.id) { index, ask in
+                        ClusterAskDetailPreviewCard(
+                            askSummary: askListSummary(from: ask),
+                            askRepository: container.askRepository,
+                            replyRepository: container.replyRepository,
+                            refreshVersion: askRefreshVersion(for: ask.id),
+                            showResolvedBadge: false,
+                            onMoreOptionsTap: { askId, prefetchedAsk, isOwner, status in
+                                openAskMenu(
+                                    .init(
+                                        askId: askId,
+                                        prefetchedAsk: prefetchedAsk,
+                                        isOwner: isOwner,
+                                        status: status
+                                    )
+                                )
+                            },
+                            onOpenDetail: {
+                                closeAllMenus()
+                                detailSheetRouter.open(.ask(id: ask.id))
+                            }
+                        )
+                        if index != visibleMyAsks.count - 1 {
+                            Divider()
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .padding(.horizontal, 2)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.myAsks.count)
@@ -549,49 +686,129 @@ struct ProfileFullView: View {
         .aspectRatio(1, contentMode: .fit)
     }
     
-    /// 詢問九宮格項目（問號圖示 + 左下角愛心數）
-    private func askGridItem(_ ask: Ask) -> some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .bottomLeading) {
-                // 背景
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.brandOrange.opacity(0.3), Color.brandOrange.opacity(0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                
-                // 中央問號圖示
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Image(systemName: "questionmark")
-                            .font(.system(size: 30, weight: .bold))
-                            .foregroundColor(.brandOrange)
-                        Spacer()
+    private var askListSkeletonItem: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                ShimmerCircle(size: 40)
+                VStack(alignment: .leading, spacing: 6) {
+                    ShimmerBox(width: 120, height: 15, cornerRadius: 4)
+                    ShimmerBox(width: 78, height: 11, cornerRadius: 4)
+                }
+                Spacer()
+            }
+
+            ShimmerBox(height: 16, cornerRadius: 4)
+            ShimmerBox(width: 220, height: 16, cornerRadius: 4)
+            ShimmerBox(width: 160, height: 12, cornerRadius: 4)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+
+    private func askListSummary(from ask: Ask) -> MapAsk {
+        MapAsk(
+            id: ask.id,
+            center: ask.center,
+            radiusMeters: ask.radiusMeters,
+            title: ask.title,
+            question: ask.question,
+            mainImageUrl: ask.mainImageUrl,
+            authorAvatarUrl: viewModel.profile?.avatarUrl,
+            status: ask.status,
+            createdAt: ask.createdAt,
+            likeCount: ask.likeCount,
+            viewCount: ask.viewCount
+        )
+    }
+
+    @ViewBuilder
+    private func askMoreOptionsMenuContent(for context: ProfileAskMenuContext) -> some View {
+        if context.isOwner {
+            DetailOptionRow(title: "編輯", systemImage: "pencil") {
+                closeAskMenu()
+                detailSheetRouter.openAskEdit(id: context.askId, prefetchedAsk: context.prefetchedAsk)
+            }
+
+            if showsResolveAction, context.status == .active {
+                DetailOptionDivider()
+                DetailOptionRow(title: "標記為已解決", systemImage: "checkmark.circle") {
+                    closeAskMenu()
+                    Task {
+                        await resolveAsk(id: context.askId)
                     }
-                    Spacer()
                 }
-                
-                // 左下角愛心數
-                HStack(spacing: 3) {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 10))
-                    Text("\(ask.likeCount)")
-                        .font(.caption2.weight(.medium))
-                }
-                .foregroundColor(.appOnPrimary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Color.appOverlay.opacity(0.5))
-                .cornerRadius(4)
-                .padding(6)
+            }
+
+            DetailOptionDivider()
+            DetailOptionRow(title: "刪除", systemImage: "trash", role: .destructive) {
+                closeAskMenu()
+                pendingDeleteAskId = context.askId
+                showAskDeleteConfirmation = true
+            }
+        } else {
+            DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
+                closeAskMenu()
+                reportAskId = context.askId
             }
         }
-        .aspectRatio(1, contentMode: .fit)
+    }
+
+    private func openAskMenu(_ context: ProfileAskMenuContext) {
+        withAnimation(askMenuShowAnimation) {
+            showMoreOptions = false
+            activeAskMenuContext = context
+        }
+    }
+
+    private func closeAskMenu() {
+        withAnimation(askMenuHideAnimation) {
+            activeAskMenuContext = nil
+        }
+    }
+
+    private func closeAllMenus() {
+        withAnimation(askMenuHideAnimation) {
+            showMoreOptions = false
+            activeAskMenuContext = nil
+        }
+    }
+
+    private func deletePendingAsk() async {
+        guard let askId = pendingDeleteAskId else { return }
+        do {
+            try await container.askRepository.deleteAsk(id: askId)
+            await MainActor.run {
+                hiddenAskIds.insert(askId)
+                localAskRefreshVersions[askId, default: 0] += 1
+                pendingDeleteAskId = nil
+                activeAskMenuContext = nil
+            }
+            await viewModel.loadMyAsks(forceRefresh: true)
+            await viewModel.loadProfile(forceRefresh: true)
+        } catch {
+            await MainActor.run {
+                askActionErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func resolveAsk(id askId: String) async {
+        do {
+            try await container.askRepository.updateAsk(
+                id: askId,
+                question: nil,
+                status: .resolved,
+                sortedImages: nil
+            )
+            await MainActor.run {
+                localAskRefreshVersions[askId, default: 0] += 1
+            }
+        } catch {
+            await MainActor.run {
+                askActionErrorMessage = error.localizedDescription
+            }
+        }
     }
     
     private func emptyStateView(icon: String, title: String, subtitle: String) -> some View {
@@ -787,7 +1004,7 @@ struct ProfileFullView: View {
                                 .foregroundColor(.primary)
 
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                TextField("請輸入姓名", text: $draftDisplayName)
+                                TextField("請輸入姓名", text: draftDisplayNameBinding)
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 16))
                                     .focused($focusedEditField, equals: .displayName)
@@ -817,7 +1034,7 @@ struct ProfileFullView: View {
                                 .foregroundColor(.primary)
 
                             HStack(alignment: .bottom, spacing: 8) {
-                                TextField("介紹一下自己", text: $draftBio, axis: .vertical)
+                                TextField("介紹一下自己", text: draftBioBinding, axis: .vertical)
                                     .lineLimit(3...6)
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 16))
@@ -871,7 +1088,7 @@ struct ProfileFullView: View {
                         .disabled(isSaveProfileButtonDisabled)
                     }
                     .padding(.horizontal, 24)
-                    .padding(.top, 18)
+                    .padding(.top, 8)
                     .padding(.bottom, 28)
                 }
         }
@@ -898,6 +1115,16 @@ struct ProfileFullView: View {
         withAnimation(editTransition) {
             isEditingProfile = false
         }
+    }
+
+    private func resetProfileEditingStateForPageSwitch() {
+        guard isEditingProfile else { return }
+        focusedEditField = nil
+        profileEditError = nil
+        draftAvatarImage = nil
+        draftDisplayName = ""
+        draftBio = ""
+        isEditingProfile = false
     }
 
     private func saveProfileEdits() async {
@@ -1004,6 +1231,13 @@ private enum ProfileEditError: LocalizedError {
             return "無效的上傳網址"
         }
     }
+}
+
+private struct ProfileAskMenuContext: Equatable {
+    let askId: String
+    let prefetchedAsk: Ask?
+    let isOwner: Bool
+    let status: AskStatus?
 }
 
 private struct ProfileMoreOptionsButtonAnchorPreferenceKey: PreferenceKey {

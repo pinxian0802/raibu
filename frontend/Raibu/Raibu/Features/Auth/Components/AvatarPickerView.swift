@@ -6,21 +6,24 @@
 //
 
 import SwiftUI
-import PhotosUI
 import Kingfisher
 
 /// 頭貼選擇器視圖
 struct AvatarPickerView: View {
+    @EnvironmentObject private var container: DIContainer
     @Binding var selectedImage: UIImage?
     var currentAvatarURL: String? = nil
     var size: CGFloat = 120
     var showsCameraBadge: Bool = true
     
-    @State private var selectedItem: PhotosPickerItem?
+    @State private var showPhotoPicker = false
+    @State private var selectedPhoto: SelectedPhoto?
     @State private var isLoading = false
     
     var body: some View {
-        PhotosPicker(selection: $selectedItem, matching: .images) {
+        Button {
+            showPhotoPicker = true
+        } label: {
             ZStack {
                 // 頭貼預覽
                 if let image = selectedImage {
@@ -74,34 +77,28 @@ struct AvatarPickerView: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
-        .onChange(of: selectedItem) { _, newValue in
-            Task {
-                await loadImage(from: newValue)
+        .sheet(isPresented: $showPhotoPicker) {
+            CustomPhotoPickerView(
+                photoPickerService: container.photoPickerService,
+                requireGPS: false,
+                maxSelection: 1,
+                showsSelectedPreview: false,
+                initialSelectedPhotos: selectedPhoto.map { [$0] } ?? []
+            ) { photos in
+                guard let firstPhoto = photos.first else { return }
+                isLoading = true
+                applySelectedPhoto(firstPhoto)
+                isLoading = false
             }
         }
     }
     
-    private func loadImage(from item: PhotosPickerItem?) async {
-        guard let item = item else { return }
-        
-        await MainActor.run { isLoading = true }
-        
-        do {
-            if let data = try await item.loadTransferable(type: Data.self),
-               let uiImage = UIImage(data: data) {
-                // 裁切為正方形並調整大小
-                let croppedImage = cropToSquare(uiImage)
-                await MainActor.run {
-                    selectedImage = croppedImage
-                    isLoading = false
-                }
-            } else {
-                await MainActor.run { isLoading = false }
-            }
-        } catch {
-            print("Failed to load image: \(error)")
-            await MainActor.run { isLoading = false }
-        }
+    private func applySelectedPhoto(_ photo: SelectedPhoto) {
+        guard let uiImage = UIImage(data: photo.originalData) else { return }
+
+        // 裁切為正方形並調整大小
+        selectedImage = cropToSquare(uiImage)
+        selectedPhoto = photo
     }
 
     private var defaultAvatarPlaceholder: some View {
@@ -172,4 +169,5 @@ struct AvatarPickerView: View {
         }
     }
     return PreviewWrapper()
+        .environmentObject(DIContainer())
 }

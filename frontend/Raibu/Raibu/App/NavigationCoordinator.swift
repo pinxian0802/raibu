@@ -31,6 +31,11 @@ class NavigationCoordinator: ObservableObject {
     /// 新增詢問標點的位置（長按地圖觸發，由 MainTabView 承接 sheet）
     @Published var createAskLocation: CreateAskLocation?
     
+    /// 個人頁編輯狀態（避免切頁後 Profile 視圖重建造成退出編輯）
+    @Published var isProfileEditing: Bool = false
+    @Published var profileEditDraftDisplayName: String = ""
+    @Published var profileEditDraftBio: String = ""
+    
     /// 跳轉到地圖並移動到指定座標
     /// - Parameters:
     ///   - coordinate: 目標座標

@@ -759,7 +759,7 @@ private struct ClusterSortButtonAnchorPreferenceKey: PreferenceKey {
     }
 }
 
-private struct ClusterAskMoreOptionsButtonAnchorPreferenceKey: PreferenceKey {
+struct ClusterAskMoreOptionsButtonAnchorPreferenceKey: PreferenceKey {
     static var defaultValue: [String: Anchor<CGRect>] = [:]
 
     static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
@@ -784,12 +784,13 @@ enum ClusterDetailDestination: Hashable {
     case recordEdit(id: String)
 }
 
-private struct ClusterAskDetailPreviewCard: View {
+struct ClusterAskDetailPreviewCard: View {
     let askSummary: MapAsk
     let askRepository: AskRepository
     let replyRepository: ReplyRepository
     let refreshVersion: Int
-    let onMoreOptionsTap: (String, Ask?, Bool, AskStatus?) -> Void
+    let showResolvedBadge: Bool
+    let onMoreOptionsTap: ((String, Ask?, Bool, AskStatus?) -> Void)?
     let onOpenDetail: () -> Void
 
     @State private var ask: Ask?
@@ -806,6 +807,24 @@ private struct ClusterAskDetailPreviewCard: View {
     private let collapsedDescriptionMaxHeight: CGFloat = 110
     private let imageCardWidth: CGFloat = 181
     private let imageCardHeight: CGFloat = 227
+
+    init(
+        askSummary: MapAsk,
+        askRepository: AskRepository,
+        replyRepository: ReplyRepository,
+        refreshVersion: Int,
+        showResolvedBadge: Bool = true,
+        onMoreOptionsTap: ((String, Ask?, Bool, AskStatus?) -> Void)?,
+        onOpenDetail: @escaping () -> Void
+    ) {
+        self.askSummary = askSummary
+        self.askRepository = askRepository
+        self.replyRepository = replyRepository
+        self.refreshVersion = refreshVersion
+        self.showResolvedBadge = showResolvedBadge
+        self.onMoreOptionsTap = onMoreOptionsTap
+        self.onOpenDetail = onOpenDetail
+    }
 
     private var currentUserId: String? {
         AuthService.shared.currentUserId
@@ -895,7 +914,7 @@ private struct ClusterAskDetailPreviewCard: View {
                         collapsedMaxHeight: collapsedDescriptionMaxHeight
                     )
 
-                    if ask.status == .resolved {
+                    if showResolvedBadge, ask.status == .resolved {
                         Label("已解決", systemImage: "checkmark.circle.fill")
                             .font(.caption.weight(.medium))
                             .foregroundColor(.appSuccess)
@@ -948,7 +967,7 @@ private struct ClusterAskDetailPreviewCard: View {
                         collapsedMaxHeight: collapsedDescriptionMaxHeight
                     )
 
-                    if askSummary.status == .resolved {
+                    if showResolvedBadge, askSummary.status == .resolved {
                         Label("已解決", systemImage: "checkmark.circle.fill")
                             .font(.caption.weight(.medium))
                             .foregroundColor(.appSuccess)
@@ -1028,20 +1047,22 @@ private struct ClusterAskDetailPreviewCard: View {
 
             Spacer()
 
-            Button {
-                onMoreOptionsTap(askSummary.id, ask, isOwner, status)
-            } label: {
-                Image(systemName: "ellipsis")
-                    .foregroundColor(.primary)
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .frame(width: 32, height: 32, alignment: .center)
-                    .contentShape(Rectangle())
+            if let onMoreOptionsTap {
+                Button {
+                    onMoreOptionsTap(askSummary.id, ask, isOwner, status)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundColor(.primary)
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .frame(width: 32, height: 32, alignment: .center)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .anchorPreference(
+                    key: ClusterAskMoreOptionsButtonAnchorPreferenceKey.self,
+                    value: .bounds
+                ) { [askSummary.id: $0] }
             }
-            .buttonStyle(.plain)
-            .anchorPreference(
-                key: ClusterAskMoreOptionsButtonAnchorPreferenceKey.self,
-                value: .bounds
-            ) { [askSummary.id: $0] }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
