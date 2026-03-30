@@ -136,8 +136,8 @@ struct ReplyCreateView: View {
                             ZStack(alignment: .topTrailing) {
                                 Image(uiImage: UIImage(data: photo.thumbnailData) ?? UIImage())
                                     .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 60, height: 60)
+                                    .scaledToFit()
+                                    .frame(height: 60)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                                 
                                 Button {
@@ -206,7 +206,7 @@ struct ReplyCreateView: View {
     // MARK: - Helpers
     
     private var canSubmit: Bool {
-        !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSubmitting
+        (!content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !selectedPhotos.isEmpty) && !isSubmitting
     }
     
     private func submitReply() {

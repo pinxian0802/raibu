@@ -11,7 +11,27 @@ import SwiftUI
 /// 用於 Record / Ask 詳情頁的刪除確認
 struct DetailDeleteConfirmation: View {
     @Binding var isPresented: Bool
+    let title: String
+    let message: String
+    let cancelText: String
+    let confirmText: String
     let onDelete: () -> Void
+
+    init(
+        isPresented: Binding<Bool>,
+        title: String = "確認刪除",
+        message: String = "確定要刪除此標點嗎？此動作無法復原",
+        cancelText: String = "取消",
+        confirmText: String = "刪除",
+        onDelete: @escaping () -> Void
+    ) {
+        self._isPresented = isPresented
+        self.title = title
+        self.message = message
+        self.cancelText = cancelText
+        self.confirmText = confirmText
+        self.onDelete = onDelete
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -28,11 +48,11 @@ struct DetailDeleteConfirmation: View {
 
                 VStack(spacing: 0) {
                     VStack(spacing: 10) {
-                        Text("確認刪除")
+                        Text(title)
                             .font(.system(size: 17, weight: .semibold, design: .rounded))
                             .foregroundColor(.primary)
 
-                        Text("確定要刪除此標點嗎？此動作無法復原")
+                        Text(message)
                             .font(.system(size: 16, weight: .regular, design: .rounded))
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.center)
@@ -48,7 +68,7 @@ struct DetailDeleteConfirmation: View {
                                 isPresented = false
                             }
                         } label: {
-                            Text("取消")
+                            Text(cancelText)
                                 .font(.system(size: 18, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,7 +84,7 @@ struct DetailDeleteConfirmation: View {
                             }
                             onDelete()
                         } label: {
-                            Text("刪除")
+                            Text(confirmText)
                                 .font(.system(size: 18, weight: .semibold, design: .rounded))
                                 .foregroundColor(.appDanger)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)

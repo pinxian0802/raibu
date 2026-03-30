@@ -549,12 +549,21 @@ struct ClusterGridSheetView: View {
                 pendingDeleteAskId = context.askId
                 showAskDeleteConfirmation = true
             }
-        } else {
+        } else if canReportAsk(in: context) {
             DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
                 closeAskMenu()
                 reportAskId = context.askId
             }
         }
+    }
+
+    private func canReportAsk(in context: ClusterAskMenuContext) -> Bool {
+        guard let currentUserId = AuthService.shared.currentUserId else { return false }
+        if context.isOwner { return false }
+        if let ownerId = context.prefetchedAsk?.userId {
+            return ownerId != currentUserId
+        }
+        return true
     }
 
     // MARK: - Sort Helpers
@@ -1051,11 +1060,7 @@ struct ClusterAskDetailPreviewCard: View {
                 Button {
                     onMoreOptionsTap(askSummary.id, ask, isOwner, status)
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .foregroundColor(.primary)
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        .frame(width: 32, height: 32, alignment: .center)
-                        .contentShape(Rectangle())
+                    DetailMoreOptionsTriggerIcon()
                 }
                 .buttonStyle(.plain)
                 .anchorPreference(

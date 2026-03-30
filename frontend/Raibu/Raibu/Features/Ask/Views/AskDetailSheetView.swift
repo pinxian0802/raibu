@@ -23,9 +23,16 @@ struct AskDetailSheetView: View {
     @StateObject private var viewModel: AskDetailViewModel
 
     @State private var showReportSheet = false
+    @State private var showReplyReportSheet = false
+    @State private var reportReplyId: String?
+    @State private var pendingDeleteReplyId: String?
+    @State private var showReplyDeleteConfirmation = false
+    @State private var replyActionErrorMessage: String?
     @State private var showMoreOptions = false
     @State private var showDeleteConfirmation = false
     @State private var replyText = ""
+    @State private var replySelectedPhotos: [SelectedPhoto] = []
+    @State private var showReplyPhotoPicker = false
     @State private var isHeartAnimating = false
     @State private var isDescriptionExpanded = false
     @State private var hasStartedInitialLoad = false
@@ -84,8 +91,10 @@ struct AskDetailSheetView: View {
                             Divider()
                             DetailReplyInputBar(
                                 replyText: $replyText,
+                                selectedPhotos: $replySelectedPhotos,
                                 isSubmitting: viewModel.isSubmittingReply,
                                 currentUserAvatarURL: DetailSheetHelpers.currentUserAvatarURL(from: container.authService),
+                                onPhotoPickerTap: { showReplyPhotoPicker = true },
                                 onSubmit: { submitReply() }
                             )
                         }
@@ -128,12 +137,61 @@ struct AskDetailSheetView: View {
                     }
                 )
             }
+
+            if showReplyDeleteConfirmation, pendingDeleteReplyId != nil {
+                DetailDeleteConfirmation(
+                    isPresented: $showReplyDeleteConfirmation,
+                    message: "確定要刪除此留言嗎？此動作無法復原",
+                    onDelete: {
+                        guard let replyId = pendingDeleteReplyId else { return }
+                        pendingDeleteReplyId = nil
+                        Task {
+                            let success = await viewModel.deleteReply(replyId: replyId)
+                            if !success {
+                                replyActionErrorMessage = viewModel.errorMessage ?? "刪除留言失敗"
+                            }
+                        }
+                    }
+                )
+            }
         }
-        .sheet(isPresented: $showReportSheet) {
-            ReportSheetView(
-                target: .ask(id: askId),
-                apiClient: container.apiClient
-            )
+        .overlay {
+            if showReportSheet {
+                DetailReportPopup(
+                    isPresented: $showReportSheet,
+                    target: .ask(id: askId),
+                    apiClient: container.apiClient
+                )
+            }
+
+            if showReplyReportSheet, let reportReplyId {
+                DetailReportPopup(
+                    isPresented: $showReplyReportSheet,
+                    target: .reply(id: reportReplyId),
+                    apiClient: container.apiClient,
+                    onDismiss: { self.reportReplyId = nil }
+                )
+            }
+        }
+        .sheet(isPresented: $showReplyPhotoPicker) {
+            CustomPhotoPickerView(
+                photoPickerService: container.photoPickerService,
+                requireGPS: false,
+                maxSelection: 5,
+                initialSelectedPhotos: replySelectedPhotos
+            ) { photos in
+                replySelectedPhotos = photos
+            }
+        }
+        .alert("操作失敗", isPresented: Binding(
+            get: { replyActionErrorMessage != nil },
+            set: { if !$0 { replyActionErrorMessage = nil } }
+        )) {
+            Button("確定") {
+                replyActionErrorMessage = nil
+            }
+        } message: {
+            Text(replyActionErrorMessage ?? "")
         }
         .task {
             guard !hasStartedInitialLoad else { return }
@@ -186,46 +244,109 @@ struct AskDetailSheetView: View {
 
     private func submitReply() {
         let trimmed = trimmedReplyText
-        guard !trimmed.isEmpty, !viewModel.isSubmittingReply else { return }
+        // allow submit when there's text or photos
+        guard (!trimmed.isEmpty || !replySelectedPhotos.isEmpty), !viewModel.isSubmittingReply else { return }
+        let photosToSubmit = replySelectedPhotos
+
+        // Immediately clear input so user sees it's submitted
+        replyText = ""
+        replySelectedPhotos = []
+
+        // Insert optimistic reply immediately and get a tempId
+        let tempId = viewModel.insertOptimisticReply(content: trimmed, selectedPhotos: photosToSubmit)
+
         Task {
-            let success = await viewModel.createReply(content: trimmed)
-            if success {
-                await MainActor.run { replyText = "" }
+            var uploadedImages: [UploadedImage]?
+
+            if !photosToSubmit.isEmpty {
+                do {
+                    uploadedImages = try await container.uploadService.uploadPhotos(photosToSubmit, context: .reply)
+                } catch {
+                    // mark optimistic as failed
+                    await MainActor.run {
+                        if let idx = viewModel.optimisticReplies.firstIndex(where: { $0.id == tempId }) {
+                            let item = viewModel.optimisticReplies[idx]
+                            viewModel.optimisticReplies[idx] = OptimisticReply(
+                                id: tempId,
+                                content: item.content,
+                                author: item.author,
+                                selectedPhotos: item.selectedPhotos,
+                                status: .failed(error)
+                            )
+                        }
+                        viewModel.isSubmittingReply = false
+                    }
+                    return
+                }
             }
+
+            // Finish creating reply on server; this will remove optimistic on success or mark failed
+            await viewModel.finishCreateReply(tempId: tempId, content: trimmed, images: uploadedImages)
         }
     }
 
     // MARK: - Content View
 
     private func contentView(ask: Ask) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                askBodySection(ask: ask)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    askBodySection(ask: ask)
 
-                Divider()
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    DetailRepliesSection(
+                        replies: viewModel.replies,
+                        optimisticReplies: viewModel.optimisticReplies,
+                        isLoadingReplies: viewModel.isLoadingReplies,
+                        onAuthorTap: { userId in
+                            detailSheetRouter.open(.userProfile(id: userId))
+                        },
+                        onLikeToggle: { replyId in
+                            Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                        },
+                        onReplyReport: { replyId in
+                            guard let reply = viewModel.replies.first(where: { $0.id == replyId }),
+                                  canReportReply(reply) else { return }
+                            reportReplyId = replyId
+                            showReplyReportSheet = true
+                        },
+                        canReportReply: { reply in canReportReply(reply) },
+                        onReplyDelete: { replyId in
+                            pendingDeleteReplyId = replyId
+                            showReplyDeleteConfirmation = true
+                        },
+                        canDeleteReply: { reply in
+                            reply.userId == viewModel.currentUserId
+                        },
+                        onRetry: { tempId in
+                            Task { await viewModel.retryOptimisticReply(id: tempId) }
+                        },
+                        onRemoveFailed: { tempId in
+                            viewModel.removeOptimisticReply(id: tempId)
+                        },
+                        onImageTapForFullScreen: { images, index in
+                            fullScreenImages = images
+                            fullScreenImageIndex = index
+                            showFullScreenImage = true
+                        }
+                    )
+                    .id("replies-top")
                     .padding(.horizontal, 16)
-
-                DetailRepliesSection(
-                    replies: viewModel.replies,
-                    isLoadingReplies: viewModel.isLoadingReplies,
-                    onAuthorTap: { userId in
-                        detailSheetRouter.open(.userProfile(id: userId))
-                    },
-                    onLikeToggle: { replyId in
-                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
-                    },
-                    onImageTapForFullScreen: { images, index in
-                        fullScreenImages = images
-                        fullScreenImageIndex = index
-                        showFullScreenImage = true
-                    }
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 24)
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
+                }
+                .padding(.top, contentTopPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.top, contentTopPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: viewModel.optimisticReplies.count) { _, newCount in
+                if newCount > 0 {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        proxy.scrollTo("replies-top", anchor: .top)
+                    }
+                }
+            }
         }
     }
 
@@ -351,12 +472,23 @@ struct AskDetailSheetView: View {
                     }
                 }
             }
-        } else {
+        } else if canReportCurrentAsk {
             DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
                 showMoreOptions = false
                 showReportSheet = true
             }
         }
+    }
+
+    private var canReportCurrentAsk: Bool {
+        guard let ask = viewModel.ask,
+              let currentUserId = viewModel.currentUserId else { return false }
+        return ask.userId != currentUserId
+    }
+
+    private func canReportReply(_ reply: Reply) -> Bool {
+        guard let currentUserId = viewModel.currentUserId else { return false }
+        return reply.userId != currentUserId
     }
 
     // MARK: - Supporting Views
@@ -385,6 +517,7 @@ struct AskDetailSheetView: View {
 class AskDetailViewModel: ObservableObject {
     @Published var ask: Ask?
     @Published var replies: [Reply] = []
+    @Published var optimisticReplies: [OptimisticReply] = []
     @Published var isLoading = true
     @Published var isLoadingReplies = false
     @Published var isSubmittingReply = false
@@ -422,7 +555,7 @@ class AskDetailViewModel: ObservableObject {
             let (fetchedAsk, fetchedReplies) = try await (loadedAsk, loadedReplies)
 
             ask = fetchedAsk
-            replies = fetchedReplies
+            replies = fetchedReplies.reversed()   // 最新在前
             isLoading = false
         } catch {
             errorMessage = error.localizedDescription
@@ -442,10 +575,21 @@ class AskDetailViewModel: ObservableObject {
         isLoadingReplies = false
     }
 
-    func createReply(content: String) async -> Bool {
+    func createReply(content: String, images: [UploadedImage]? = nil, selectedPhotos: [SelectedPhoto] = []) async -> Bool {
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedContent.isEmpty else { return false }
 
+        let tempId = UUID().uuidString
+        let currentUser = AuthService.shared.currentUser
+        let optimistic = OptimisticReply(
+            id: tempId,
+            content: trimmedContent,
+            author: currentUser,
+            selectedPhotos: selectedPhotos,
+            status: .pending
+        )
+
+        optimisticReplies.insert(optimistic, at: 0)
         isSubmittingReply = true
         errorMessage = nil
 
@@ -453,16 +597,101 @@ class AskDetailViewModel: ObservableObject {
             let reply = try await replyRepository.createReplyForAsk(
                 askId: askId,
                 content: trimmedContent,
-                images: nil,
+                images: images,
                 currentLocation: nil
             )
-            replies.append(reply)
+            optimisticReplies.removeAll { $0.id == tempId }
+            replies.insert(reply, at: 0)
             isSubmittingReply = false
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            if let idx = optimisticReplies.firstIndex(where: { $0.id == tempId }) {
+                optimisticReplies[idx] = OptimisticReply(
+                    id: tempId,
+                    content: trimmedContent,
+                    author: currentUser,
+                    selectedPhotos: selectedPhotos,
+                    status: .failed(error)
+                )
+            }
             isSubmittingReply = false
             return false
+        }
+    }
+
+    func retryOptimisticReply(id: String, images: [UploadedImage]? = nil) async {
+        guard let item = optimisticReplies.first(where: { $0.id == id }) else { return }
+
+        if let idx = optimisticReplies.firstIndex(where: { $0.id == id }) {
+            optimisticReplies[idx] = OptimisticReply(
+                id: id, content: item.content,
+                author: item.author, selectedPhotos: item.selectedPhotos,
+                status: .pending
+            )
+        }
+
+        do {
+            let reply = try await replyRepository.createReplyForAsk(
+                askId: askId, content: item.content,
+                images: images, currentLocation: nil
+            )
+            optimisticReplies.removeAll { $0.id == id }
+            replies.insert(reply, at: 0)
+        } catch {
+            if let idx = optimisticReplies.firstIndex(where: { $0.id == id }) {
+                optimisticReplies[idx] = OptimisticReply(
+                    id: id, content: item.content,
+                    author: item.author, selectedPhotos: item.selectedPhotos,
+                    status: .failed(error)
+                )
+            }
+        }
+    }
+
+    func removeOptimisticReply(id: String) {
+        optimisticReplies.removeAll { $0.id == id }
+    }
+
+    /// 立即插入 optimistic reply，回傳 tempId
+    func insertOptimisticReply(content: String, selectedPhotos: [SelectedPhoto]) -> String {
+        let tempId = UUID().uuidString
+        let optimistic = OptimisticReply(
+            id: tempId,
+            content: content,
+            author: AuthService.shared.currentUser,
+            selectedPhotos: selectedPhotos,
+            status: .pending
+        )
+        // @MainActor class — assign directly, no dispatch needed
+        optimisticReplies.insert(optimistic, at: 0)
+        isSubmittingReply = true
+        return tempId
+    }
+
+    /// 完成 server 建立，替換或標記失敗
+    func finishCreateReply(tempId: String, content: String, images: [UploadedImage]?) async {
+        do {
+            let reply = try await replyRepository.createReplyForAsk(
+                askId: askId,
+                content: content,
+                images: images,
+                currentLocation: nil
+            )
+            optimisticReplies.removeAll { $0.id == tempId }
+            replies.insert(reply, at: 0)
+            isSubmittingReply = false
+        } catch {
+            if let idx = optimisticReplies.firstIndex(where: { $0.id == tempId }) {
+                let item = optimisticReplies[idx]
+                optimisticReplies[idx] = OptimisticReply(
+                    id: tempId,
+                    content: item.content,
+                    author: item.author,
+                    selectedPhotos: item.selectedPhotos,
+                    status: .failed(error)
+                )
+            }
+            isSubmittingReply = false
         }
     }
 
@@ -612,6 +841,17 @@ class AskDetailViewModel: ObservableObject {
                     userHasLiked: wasLiked
                 )
             }
+        }
+    }
+
+    func deleteReply(replyId: String) async -> Bool {
+        do {
+            try await replyRepository.deleteReply(id: replyId)
+            replies.removeAll { $0.id == replyId }
+            return true
+        } catch {
+            errorMessage = "刪除留言失敗: \(error.localizedDescription)"
+            return false
         }
     }
 }

@@ -79,8 +79,14 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
     throw Errors.invalidArgument('必須提供 record_id 或 ask_id 其中之一');
   }
 
-  if (!content || typeof content !== 'string') {
+  if (content === undefined || content === null || typeof content !== 'string') {
     throw Errors.invalidArgument('content 為必填欄位');
+  }
+
+  // content 可以為空字串，但必須搭配圖片
+  const trimmedContent = content.trim();
+  if (!trimmedContent && (!images || images.length === 0)) {
+    throw Errors.invalidArgument('內容或圖片至少需要提供一項');
   }
 
   // 驗證圖片數量（回覆最多 5 張）
@@ -208,6 +214,43 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
   );
 
   res.json({ replies: repliesWithImages });
+}));
+
+/**
+ * API D-3: 刪除回覆
+ * DELETE /api/v1/replies/:id
+ */
+router.delete('/:id', requireAuth, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  const { data: reply, error: fetchError } = await supabase
+    .from('replies')
+    .select('id, user_id')
+    .eq('id', id)
+    .single();
+
+  if (fetchError || !reply) {
+    throw Errors.notFound('回覆不存在');
+  }
+
+  if (reply.user_id !== userId) {
+    throw Errors.permissionDenied('只能刪除自己的留言');
+  }
+
+  const { error: deleteError } = await supabase
+    .from('replies')
+    .delete()
+    .eq('id', id);
+
+  if (deleteError) {
+    throw Errors.internal('刪除回覆失敗');
+  }
+
+  res.json({
+    success: true,
+    message: '回覆已刪除',
+  });
 }));
 
 module.exports = router;

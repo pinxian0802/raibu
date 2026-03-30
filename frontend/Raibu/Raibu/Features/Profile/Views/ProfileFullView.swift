@@ -285,13 +285,9 @@ struct ProfileFullView: View {
                 showMoreOptions.toggle()
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .foregroundColor(.primary)
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
+            DetailMoreOptionsTriggerIcon()
         }
         .buttonStyle(.plain)
-        .frame(width: 32, height: 32, alignment: .center)
-        .contentShape(Rectangle())
         .opacity(isEditingProfile ? 0.35 : 1.0)
         .disabled(isEditingProfile)
         .anchorPreference(key: ProfileMoreOptionsButtonAnchorPreferenceKey.self, value: .bounds) { $0 }
@@ -746,12 +742,21 @@ struct ProfileFullView: View {
                 pendingDeleteAskId = context.askId
                 showAskDeleteConfirmation = true
             }
-        } else {
+        } else if canReportAsk(in: context) {
             DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
                 closeAskMenu()
                 reportAskId = context.askId
             }
         }
+    }
+
+    private func canReportAsk(in context: ProfileAskMenuContext) -> Bool {
+        guard let currentUserId = authService.currentUserId else { return false }
+        if context.isOwner { return false }
+        if let ownerId = context.prefetchedAsk?.userId {
+            return ownerId != currentUserId
+        }
+        return true
     }
 
     private func openAskMenu(_ context: ProfileAskMenuContext) {

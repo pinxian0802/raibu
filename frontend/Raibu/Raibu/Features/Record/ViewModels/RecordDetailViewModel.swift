@@ -14,6 +14,7 @@ class RecordDetailViewModel: ObservableObject {
     
     @Published var record: Record?
     @Published var replies: [Reply] = []
+    @Published var optimisticReplies: [OptimisticReply] = []   // 送出中 / 失敗的暫時回覆
     @Published var isLoading = true
     @Published var errorMessage: String?
     @Published var isSubmittingReply = false
@@ -47,6 +48,10 @@ class RecordDetailViewModel: ObservableObject {
         let isOwner = record.userId == currentUserId
         print("✅ isOwner check: recordUserId=\(record.userId), currentUserId=\(currentUserId), isOwner=\(isOwner)")
         return isOwner
+    }
+
+    var currentUserId: String? {
+        authService.currentUserId
     }
     
     // MARK: - Dependencies
@@ -105,7 +110,7 @@ class RecordDetailViewModel: ObservableObject {
                 try Task.checkCancellation()
                 
                 record = loadedRecord
-                replies = loadedReplies
+                replies = loadedReplies.reversed()   // 最新在前
                 isLiked = loadedRecord.userHasLiked ?? false
                 likeCount = loadedRecord.likeCount
                 isLoading = false
@@ -214,34 +219,168 @@ class RecordDetailViewModel: ObservableObject {
         }
     }
     
-    /// 建立留言
-    func createReply(content: String) async -> Bool {
+    /// 建立留言（含 optimistic insert）
+    func createReply(content: String, images: [UploadedImage]? = nil, selectedPhotos: [SelectedPhoto] = []) async -> Bool {
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedContent.isEmpty else { return false }
-        
+        // If this call was initiated after an optimistic insert, a tempId will be provided
+        // (we'll use a separate overload that accepts a tempId). This implementation
+        // keeps backward compatibility by performing the full flow if no tempId exists.
+
+        // Default behavior when called directly: perform optimistic insert here
+        let tempId = UUID().uuidString
+        let currentUser = authService.currentUser
+        let optimistic = OptimisticReply(
+            id: tempId,
+            content: trimmedContent,
+            author: currentUser,
+            selectedPhotos: selectedPhotos,
+            status: .pending
+        )
+
         await MainActor.run {
+            optimisticReplies.insert(optimistic, at: 0)
             isSubmittingReply = true
         }
-        
+
         do {
             let reply = try await replyRepository.createReplyForRecord(
                 recordId: recordId,
                 content: trimmedContent,
-                images: nil
+                images: images
             )
-            
+
             await MainActor.run {
-                replies.append(reply)
+                // 移除 optimistic，插入真實回覆到最前面
+                optimisticReplies.removeAll { $0.id == tempId }
+                replies.insert(reply, at: 0)
                 isSubmittingReply = false
             }
-            
             return true
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                // 標記失敗
+                if let idx = optimisticReplies.firstIndex(where: { $0.id == tempId }) {
+                    optimisticReplies[idx] = OptimisticReply(
+                        id: tempId,
+                        content: trimmedContent,
+                        author: currentUser,
+                        selectedPhotos: selectedPhotos,
+                        status: .failed(error)
+                    )
+                }
                 isSubmittingReply = false
             }
-            
+            return false
+        }
+    }
+
+    /// 直接插入一個 optimistic reply 並回傳 tempId（用於立即顯示）
+    @MainActor
+    func insertOptimisticReply(content: String, selectedPhotos: [SelectedPhoto]) -> String {
+        let tempId = UUID().uuidString
+        let optimistic = OptimisticReply(
+            id: tempId,
+            content: content,
+            author: authService.currentUser,
+            selectedPhotos: selectedPhotos,
+            status: .pending
+        )
+        // Insert synchronously on main actor — callers from SwiftUI views are already on main thread
+        optimisticReplies.insert(optimistic, at: 0)
+        isSubmittingReply = true
+        return tempId
+    }
+
+    /// 完成 create（用於在完成 upload 後用 tempId 替換）
+    func finishCreateReply(tempId: String, content: String, images: [UploadedImage]?) async {
+        do {
+            let reply = try await replyRepository.createReplyForRecord(
+                recordId: recordId,
+                content: content,
+                images: images
+            )
+            await MainActor.run {
+                self.optimisticReplies.removeAll { $0.id == tempId }
+                self.replies.insert(reply, at: 0)
+                self.isSubmittingReply = false
+            }
+        } catch {
+            await MainActor.run {
+                if let idx = self.optimisticReplies.firstIndex(where: { $0.id == tempId }) {
+                    let item = self.optimisticReplies[idx]
+                    self.optimisticReplies[idx] = OptimisticReply(
+                        id: tempId,
+                        content: item.content,
+                        author: item.author,
+                        selectedPhotos: item.selectedPhotos,
+                        status: .failed(error)
+                    )
+                }
+                self.isSubmittingReply = false
+            }
+        }
+    }
+
+    /// 重新傳送失敗的 optimistic reply
+    func retryOptimisticReply(id: String, images: [UploadedImage]? = nil) async {
+        guard let item = optimisticReplies.first(where: { $0.id == id }) else { return }
+
+        // 重置狀態為 pending
+        await MainActor.run {
+            if let idx = optimisticReplies.firstIndex(where: { $0.id == id }) {
+                optimisticReplies[idx] = OptimisticReply(
+                    id: id,
+                    content: item.content,
+                    author: item.author,
+                    selectedPhotos: item.selectedPhotos,
+                    status: .pending
+                )
+            }
+        }
+
+        do {
+            let reply = try await replyRepository.createReplyForRecord(
+                recordId: recordId,
+                content: item.content,
+                images: images
+            )
+            await MainActor.run {
+                optimisticReplies.removeAll { $0.id == id }
+                replies.insert(reply, at: 0)
+            }
+        } catch {
+            await MainActor.run {
+                if let idx = optimisticReplies.firstIndex(where: { $0.id == id }) {
+                    optimisticReplies[idx] = OptimisticReply(
+                        id: id,
+                        content: item.content,
+                        author: item.author,
+                        selectedPhotos: item.selectedPhotos,
+                        status: .failed(error)
+                    )
+                }
+            }
+        }
+    }
+
+    /// 刪除失敗的 optimistic reply
+    func removeOptimisticReply(id: String) {
+        optimisticReplies.removeAll { $0.id == id }
+    }
+
+    /// 刪除留言
+    func deleteReply(replyId: String) async -> Bool {
+        do {
+            try await replyRepository.deleteReply(id: replyId)
+            await MainActor.run {
+                replies.removeAll { $0.id == replyId }
+            }
+            return true
+        } catch {
+            await MainActor.run {
+                errorMessage = "刪除留言失敗: \(error.localizedDescription)"
+            }
             return false
         }
     }

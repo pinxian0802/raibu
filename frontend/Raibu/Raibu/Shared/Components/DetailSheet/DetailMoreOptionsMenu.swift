@@ -33,6 +33,17 @@ struct DetailMoreOptionsMenu<Content: View>: View {
     }
 }
 
+/// 三個點觸發 icon 的共用樣式，避免不同頁面出現視覺漂移
+struct DetailMoreOptionsTriggerIcon: View {
+    var body: some View {
+        Image(systemName: "ellipsis")
+            .foregroundColor(.primary)
+            .font(.system(size: 20, weight: .semibold, design: .rounded))
+            .frame(width: 32, height: 32, alignment: .center)
+            .contentShape(Rectangle())
+    }
+}
+
 /// 選項列 (單一按鈕)
 struct DetailOptionRow: View {
     let title: String

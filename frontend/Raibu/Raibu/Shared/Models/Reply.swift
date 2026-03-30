@@ -42,6 +42,22 @@ struct Reply: Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Optimistic Reply
+
+/// 樂觀顯示的暫時回覆（送出中 / 失敗）
+struct OptimisticReply: Identifiable {
+    let id: String          // 本地暫時 ID（UUID）
+    let content: String
+    let author: User?
+    let selectedPhotos: [SelectedPhoto]
+    var status: Status
+    
+    enum Status {
+        case pending
+        case failed(Error)
+    }
+}
+
 // MARK: - API Request Models
 
 /// 建立回覆請求

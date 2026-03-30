@@ -84,13 +84,9 @@ struct DetailAuthorHeaderView<AnchorKey: PreferenceKey>: View where AnchorKey.Va
                 showMoreOptions.toggle()
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .foregroundColor(.primary)
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
+            DetailMoreOptionsTriggerIcon()
         }
         .buttonStyle(.plain)
-        .frame(width: 32, height: 32, alignment: .center)
-        .contentShape(Rectangle())
         .anchorPreference(key: anchorKey, value: .bounds) { $0 }
     }
 }

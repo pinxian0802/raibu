@@ -18,7 +18,14 @@ struct RecordDetailSheetView: View {
     @StateObject private var viewModel: RecordDetailViewModel
     @State private var showMoreOptions = false
     @State private var showReportSheet = false
+    @State private var showReplyReportSheet = false
+    @State private var reportReplyId: String?
+    @State private var pendingDeleteReplyId: String?
+    @State private var showReplyDeleteConfirmation = false
+    @State private var replyActionErrorMessage: String?
     @State private var replyText = ""
+    @State private var replySelectedPhotos: [SelectedPhoto] = []
+    @State private var showReplyPhotoPicker = false
     @State private var isDescriptionExpanded = false
     @State private var isHeartAnimating = false
     @State private var hasStartedInitialLoad = false
@@ -84,8 +91,10 @@ struct RecordDetailSheetView: View {
                             Divider()
                             DetailReplyInputBar(
                                 replyText: $replyText,
+                                selectedPhotos: $replySelectedPhotos,
                                 isSubmitting: viewModel.isSubmittingReply,
                                 currentUserAvatarURL: DetailSheetHelpers.currentUserAvatarURL(from: container.authService),
+                                onPhotoPickerTap: { showReplyPhotoPicker = true },
                                 onSubmit: { submitReply() }
                             )
                         }
@@ -125,6 +134,23 @@ struct RecordDetailSheetView: View {
                     }
                 )
             }
+
+            if showReplyDeleteConfirmation, pendingDeleteReplyId != nil {
+                DetailDeleteConfirmation(
+                    isPresented: $showReplyDeleteConfirmation,
+                    message: "確定要刪除此留言嗎？此動作無法復原",
+                    onDelete: {
+                        guard let replyId = pendingDeleteReplyId else { return }
+                        pendingDeleteReplyId = nil
+                        Task {
+                            let success = await viewModel.deleteReply(replyId: replyId)
+                            if !success {
+                                replyActionErrorMessage = viewModel.errorMessage ?? "刪除留言失敗"
+                            }
+                        }
+                    }
+                )
+            }
         }
         .fullScreenImageViewer(
             isPresented: $showFullScreenImage,
@@ -136,11 +162,43 @@ struct RecordDetailSheetView: View {
             hasStartedInitialLoad = true
             viewModel.loadRecord()
         }
-        .sheet(isPresented: $showReportSheet) {
-            ReportSheetView(
-                target: .record(id: viewModel.recordId),
-                apiClient: container.apiClient
-            )
+        .overlay {
+            if showReportSheet {
+                DetailReportPopup(
+                    isPresented: $showReportSheet,
+                    target: .record(id: viewModel.recordId),
+                    apiClient: container.apiClient
+                )
+            }
+
+            if showReplyReportSheet, let reportReplyId {
+                DetailReportPopup(
+                    isPresented: $showReplyReportSheet,
+                    target: .reply(id: reportReplyId),
+                    apiClient: container.apiClient,
+                    onDismiss: { self.reportReplyId = nil }
+                )
+            }
+        }
+        .sheet(isPresented: $showReplyPhotoPicker) {
+            CustomPhotoPickerView(
+                photoPickerService: container.photoPickerService,
+                requireGPS: false,
+                maxSelection: 5,
+                initialSelectedPhotos: replySelectedPhotos
+            ) { photos in
+                replySelectedPhotos = photos
+            }
+        }
+        .alert("操作失敗", isPresented: Binding(
+            get: { replyActionErrorMessage != nil },
+            set: { if !$0 { replyActionErrorMessage = nil } }
+        )) {
+            Button("確定") {
+                replyActionErrorMessage = nil
+            }
+        } message: {
+            Text(replyActionErrorMessage ?? "")
         }
         .onChange(of: viewModel.record?.id) { _, _ in
             isDescriptionExpanded = false
@@ -187,38 +245,70 @@ struct RecordDetailSheetView: View {
     // MARK: - Content View
     
     private func contentView(record: Record) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                recordBodySection(record: record)
-                
-                Divider()
-                    .padding(.horizontal, 16)
-                
-                DetailRepliesSection(
-                    replies: viewModel.replies,
-                    isLoadingReplies: false,
-                    onAuthorTap: { userId in
-                        if let onOpenUserProfile {
-                            onOpenUserProfile(userId)
-                        } else {
-                            detailSheetRouter.open(.userProfile(id: userId))
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    recordBodySection(record: record)
+
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    DetailRepliesSection(
+                        replies: viewModel.replies,
+                        optimisticReplies: viewModel.optimisticReplies,
+                        isLoadingReplies: false,
+                        onAuthorTap: { userId in
+                            if let onOpenUserProfile {
+                                onOpenUserProfile(userId)
+                            } else {
+                                detailSheetRouter.open(.userProfile(id: userId))
+                            }
+                        },
+                        onLikeToggle: { replyId in
+                            Task { await viewModel.toggleReplyLike(replyId: replyId) }
+                        },
+                        onReplyReport: { replyId in
+                            guard let reply = viewModel.replies.first(where: { $0.id == replyId }),
+                                  canReportReply(reply) else { return }
+                            reportReplyId = replyId
+                            showReplyReportSheet = true
+                        },
+                        canReportReply: { reply in canReportReply(reply) },
+                        onReplyDelete: { replyId in
+                            pendingDeleteReplyId = replyId
+                            showReplyDeleteConfirmation = true
+                        },
+                        canDeleteReply: { reply in
+                            reply.userId == viewModel.currentUserId
+                        },
+                        onRetry: { tempId in
+                            Task { await viewModel.retryOptimisticReply(id: tempId) }
+                        },
+                        onRemoveFailed: { tempId in
+                            viewModel.removeOptimisticReply(id: tempId)
+                        },
+                        onImageTapForFullScreen: { images, index in
+                            fullScreenImages = images
+                            fullScreenImageIndex = index
+                            showFullScreenImage = true
                         }
-                    },
-                    onLikeToggle: { replyId in
-                        Task { await viewModel.toggleReplyLike(replyId: replyId) }
-                    },
-                    onImageTapForFullScreen: { images, index in
-                        fullScreenImages = images
-                        fullScreenImageIndex = index
-                        showFullScreenImage = true
-                    }
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 24)
+                    )
+                    .id("replies-top")
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
+                }
+                .padding(.top, contentTopPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.top, contentTopPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: viewModel.optimisticReplies.count) { _, newCount in
+                // 有新的 optimistic reply 插入時，滾到最上面
+                if newCount > 0 {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        proxy.scrollTo("replies-top", anchor: .top)
+                    }
+                }
+            }
         }
     }
     
@@ -309,12 +399,41 @@ struct RecordDetailSheetView: View {
 
     private func submitReply() {
         let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !viewModel.isSubmittingReply else { return }
+        // allow submit when there's text or photos
+        guard (!trimmed.isEmpty || !replySelectedPhotos.isEmpty), !viewModel.isSubmittingReply else { return }
+        let photosToSubmit = replySelectedPhotos
+
+        // Immediately clear the input so user sees it sent
+        replyText = ""
+        replySelectedPhotos = []
+
+        // Insert optimistic reply immediately and receive tempId
+        let tempId = viewModel.insertOptimisticReply(content: trimmed, selectedPhotos: photosToSubmit)
+
         Task {
-            let success = await viewModel.createReply(content: trimmed)
-            if success {
-                await MainActor.run { replyText = "" }
+            var uploadedImages: [UploadedImage]?
+            if !photosToSubmit.isEmpty {
+                do {
+                    uploadedImages = try await container.uploadService.uploadPhotos(photosToSubmit, context: .reply)
+                } catch {
+                    await MainActor.run {
+                        if let idx = viewModel.optimisticReplies.firstIndex(where: { $0.id == tempId }) {
+                            let item = viewModel.optimisticReplies[idx]
+                            viewModel.optimisticReplies[idx] = OptimisticReply(
+                                id: tempId,
+                                content: item.content,
+                                author: item.author,
+                                selectedPhotos: item.selectedPhotos,
+                                status: .failed(error)
+                            )
+                        }
+                        viewModel.isSubmittingReply = false
+                    }
+                    return
+                }
             }
+
+            await viewModel.finishCreateReply(tempId: tempId, content: trimmed, images: uploadedImages)
         }
     }
 
@@ -347,12 +466,23 @@ struct RecordDetailSheetView: View {
                     }
                 }
             }
-        } else {
+        } else if canReportCurrentRecord {
             DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
                 showMoreOptions = false
                 showReportSheet = true
             }
         }
+    }
+
+    private var canReportCurrentRecord: Bool {
+        guard let record = viewModel.record,
+              let currentUserId = viewModel.currentUserId else { return false }
+        return record.userId != currentUserId
+    }
+
+    private func canReportReply(_ reply: Reply) -> Bool {
+        guard let currentUserId = viewModel.currentUserId else { return false }
+        return reply.userId != currentUserId
     }
     
     // MARK: - Supporting Views
@@ -386,25 +516,33 @@ struct ReplyRowView: View {
     let reply: Reply
     var onAuthorTap: ((String) -> Void)? = nil
     var onLikeToggle: ((String) -> Void)? = nil
+    var canDelete: Bool = false
+    var onReportTap: ((String) -> Void)? = nil
+    var onDeleteTap: ((String) -> Void)? = nil
+    var isMenuPresented: Bool = false
+    var onMenuPresentedChange: ((Bool) -> Void)? = nil
     var onImageTapForFullScreen: ((_ images: [ImageMedia], _ index: Int) -> Void)? = nil
     @Environment(\.displayScale) private var displayScale
     private let replyImageWidth: CGFloat = 96
     private let replyImageHeight: CGFloat = 96 * 375 / 260
+    private let moreOptionsMenuWidth: CGFloat = 186
     
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             avatarButton
             
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: hasReplyText ? 5 : 3) {
                 Text(displayName)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(.secondary)
-                
-                Text(reply.content)
-                    .font(.system(size: 17, weight: .regular, design: .default))
-                    .foregroundColor(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(3)
+
+                if hasReplyText {
+                    Text(reply.content)
+                        .font(.system(size: 17, weight: .regular, design: .default))
+                        .foregroundColor(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(3)
+                }
 
                 if let images = reply.images, !images.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -427,8 +565,8 @@ struct ReplyRowView: View {
                                     .cacheOriginalImage()
                                     .fade(duration: 0.2)
                                     .resizable()
-                                    .scaledToFill()
-                                    .frame(width: replyImageWidth, height: replyImageHeight)
+                                    .scaledToFit()
+                                    .frame(height: replyImageHeight)
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                                     .onTapGesture {
                                         onImageTapForFullScreen?(images, index)
@@ -449,21 +587,42 @@ struct ReplyRowView: View {
                             .foregroundColor(.secondary)
                     }
                 }
+                .padding(.top, (!hasReplyText && hasReplyImages) ? 5 : 0)
             }
             
             Spacer(minLength: 8)
-            
-            Button {
-                onLikeToggle?(reply.id)
-            } label: {
-                Image(systemName: (reply.userHasLiked ?? false) ? "heart.fill" : "heart")
-                    .font(.system(size: 20))
-                    .foregroundColor((reply.userHasLiked ?? false) ? .red : .secondary)
-                    .padding(.top, 2)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                if showsMoreOptionsButton {
+                    moreOptionsButton
+                }
+
+                Button {
+                    onLikeToggle?(reply.id)
+                } label: {
+                    Image(systemName: (reply.userHasLiked ?? false) ? "heart.fill" : "heart")
+                        .font(.system(size: 20))
+                        .foregroundColor((reply.userHasLiked ?? false) ? .red : .secondary)
+                        .padding(.top, 2)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 10)
+        .overlayPreferenceValue(ReplyMoreOptionsButtonAnchorPreferenceKey.self) { anchor in
+            GeometryReader { proxy in
+                if isMenuPresented, let anchor {
+                    let buttonFrame = proxy[anchor]
+                    DetailMoreOptionsOverlay(
+                        buttonFrame: buttonFrame,
+                        menuWidth: moreOptionsMenuWidth,
+                        onDismiss: { onMenuPresentedChange?(false) }
+                    ) {
+                        moreOptionsMenuContent
+                    }
+                }
+            }
+        }
     }
     
     private var avatarView: some View {
@@ -510,6 +669,48 @@ struct ReplyRowView: View {
         }
         return "使用者"
     }
+
+    private var showsMoreOptionsButton: Bool {
+        onReportTap != nil || (canDelete && onDeleteTap != nil)
+    }
+
+    private var moreOptionsButton: some View {
+        Button {
+            onMenuPresentedChange?(!isMenuPresented)
+        } label: {
+            DetailMoreOptionsTriggerIcon()
+        }
+        .buttonStyle(.plain)
+        .anchorPreference(key: ReplyMoreOptionsButtonAnchorPreferenceKey.self, value: .bounds) { $0 }
+    }
+
+    @ViewBuilder
+    private var moreOptionsMenuContent: some View {
+        if let onReportTap {
+            DetailOptionRow(title: "檢舉", systemImage: "flag", role: .destructive) {
+                onMenuPresentedChange?(false)
+                onReportTap(reply.id)
+            }
+        }
+
+        if canDelete, let onDeleteTap {
+            if onReportTap != nil {
+                DetailOptionDivider()
+            }
+            DetailOptionRow(title: "刪除", systemImage: "trash", role: .destructive) {
+                onMenuPresentedChange?(false)
+                onDeleteTap(reply.id)
+            }
+        }
+    }
+
+    private var hasReplyText: Bool {
+        !reply.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hasReplyImages: Bool {
+        !(reply.images?.isEmpty ?? true)
+    }
     
     private func formatTimeAgo(_ date: Date) -> String {
         let now = Date()
@@ -524,6 +725,14 @@ struct ReplyRowView: View {
         } else {
             return "\(Int(diff / 86400)) 天前"
         }
+    }
+}
+
+struct ReplyMoreOptionsButtonAnchorPreferenceKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
     }
 }
 
