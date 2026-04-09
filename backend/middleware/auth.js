@@ -40,6 +40,33 @@ function authenticate(required = true) {
 
       // 附加用戶資訊到請求
       req.user = user;
+
+      // 檢查是否被管理者封鎖（只在強制認證的路由才查，避免不必要的 DB 請求）
+      if (required) {
+        try {
+          const { data: profile } = await supabase
+            .from('users')
+            .select('is_banned')
+            .eq('id', user.id)
+            .single();
+
+          // profile 可能為 null（新用戶尚未建立 profile）
+          // is_banned 欄位可能不存在（migration 尚未執行），此時 profile.is_banned = undefined → falsy → 安全
+          if (profile?.is_banned === true) {
+            return res.status(403).json({
+              error: {
+                code: 'ACCOUNT_BANNED',
+                message: '您的帳號已被封鎖，如有疑問請聯繫客服',
+              },
+            });
+          }
+        } catch (banCheckErr) {
+          // is_banned 查詢失敗不應中斷正常流程（例如欄位尚未 migration）
+          // 只記錄 warning，繼續放行
+          console.warn('is_banned check failed (migration pending?):', banCheckErr.message);
+        }
+      }
+
       next();
 
     } catch (err) {

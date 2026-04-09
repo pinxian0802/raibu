@@ -33,6 +33,17 @@ struct RaibuApp: App {
                         consumePendingDetailRouteIfNeeded()
                     }
                 }
+                .onReceive(container.authService.$authState) { state in
+                    switch state {
+                    case .authenticated, .unauthenticated:
+                        navigationCoordinator.resetToMapHome()
+                        if case .unauthenticated = state {
+                            detailSheetRouter.dismiss()
+                        }
+                    default:
+                        break
+                    }
+                }
         }
     }
     

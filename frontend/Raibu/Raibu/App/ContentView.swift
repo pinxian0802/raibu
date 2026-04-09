@@ -11,6 +11,8 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var container: DIContainer
     @EnvironmentObject var authService: AuthService
+    @EnvironmentObject var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject var detailSheetRouter: DetailSheetRouter
     @Environment(\.scenePhase) var scenePhase
     @State private var isSyncingCurrentUserProfile = false
     
@@ -32,13 +34,22 @@ struct ContentView: View {
         .onAppear {
             Task {
                 await authService.checkAuthStatus()
+                await handleAuthenticatedEntryIfNeeded()
                 await syncCurrentUserProfileIfNeeded()
             }
         }
-        .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
-            guard isAuthenticated else { return }
+        .onReceive(authService.$authState) { state in
             Task {
-                await syncCurrentUserProfileIfNeeded()
+                switch state {
+                case .authenticated:
+                    await handleAuthenticatedEntryIfNeeded()
+                    await syncCurrentUserProfileIfNeeded()
+                case .unauthenticated:
+                    navigationCoordinator.resetToMapHome()
+                    detailSheetRouter.dismiss()
+                default:
+                    break
+                }
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -64,11 +75,22 @@ struct ContentView: View {
         do {
             let profile = try await container.userRepository.getMe()
             authService.cacheCurrentUserProfile(profile.toUser())
+        } catch APIError.accountBanned(let message) {
+            await MainActor.run {
+                authService.showBanNotice(message: message)
+            }
         } catch {
             #if DEBUG
             print("⚠️ syncCurrentUserProfileIfNeeded failed: \(error.localizedDescription)")
             #endif
         }
+    }
+
+    @MainActor
+    private func handleAuthenticatedEntryIfNeeded() async {
+        guard authService.isAuthenticated else { return }
+        navigationCoordinator.resetToMapHome()
+        detailSheetRouter.dismiss()
     }
 }
 

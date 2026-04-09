@@ -18,6 +18,11 @@ enum AuthState {
     case authenticated
 }
 
+struct BanNotice: Identifiable, Equatable {
+    let id = UUID()
+    let message: String
+}
+
 /// 認證服務
 class AuthService: ObservableObject {
     /// 單例實例（全局共用）
@@ -27,6 +32,7 @@ class AuthService: ObservableObject {
     @Published var currentUser: User?
     @Published private(set) var isCurrentUserProfileSynced = false
     @Published var isLoading = false
+    @Published var activeBanNotice: BanNotice?
     
     /// 便捷屬性：當前使用者 ID
     var currentUserId: String? {
@@ -55,6 +61,7 @@ class AuthService: ObservableObject {
     
     private let keychainManager: KeychainManager
     private var accessToken: String?
+    private var hasShownBanNoticeThisSession = false
     
     // MARK: - Test Mode Configuration (DEBUG only)
     #if DEBUG
@@ -115,6 +122,9 @@ class AuthService: ObservableObject {
     func checkAuthStatus() async {
         if let token = keychainManager.getAccessToken() {
             accessToken = token
+            await MainActor.run {
+                isCurrentUserProfileSynced = false
+            }
             
             // 檢查 Token 是否快過期（< 10 分鐘），提前刷新
             if isTokenExpiringSoon(token) {
@@ -724,6 +734,15 @@ class AuthService: ObservableObject {
     func cacheCurrentUserProfile(_ user: User) {
         currentUser = user
         isCurrentUserProfileSynced = true
+        if user.isBanned == true, !hasShownBanNoticeThisSession {
+            activeBanNotice = BanNotice(message: banNoticeMessage(for: user))
+            hasShownBanNoticeThisSession = true
+        }
+    }
+
+    @MainActor
+    func dismissBanNotice() {
+        activeBanNotice = nil
     }
     
     /// 登出
@@ -734,8 +753,10 @@ class AuthService: ObservableObject {
         await MainActor.run {
             currentUser = nil
             isCurrentUserProfileSynced = false
+            activeBanNotice = nil
             authState = .unauthenticated
         }
+        hasShownBanNoticeThisSession = false
     }
     
     /// 刷新 Token
@@ -809,6 +830,20 @@ class AuthService: ObservableObject {
             print("❌ validateToken error: \(error)")
             return false
         }
+    }
+
+    private func banNoticeMessage(for user: User) -> String {
+        if let reason = user.banReason, !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "此帳號已被封鎖。\n原因：\(reason)"
+        }
+        return "此帳號已被封鎖。若您認為有誤，請聯繫管理員。"
+    }
+
+    @MainActor
+    func showBanNotice(message: String) {
+        activeBanNotice = BanNotice(message: message)
+        hasShownBanNoticeThisSession = true
+        isCurrentUserProfileSynced = true
     }
 }
 

@@ -95,6 +95,7 @@ const repliesRoutes = require("./routes/replies");
 const likesRoutes = require("./routes/likes");
 const usersRoutes = require("./routes/users");
 const reportsRoutes = require("./routes/reports");
+const adminRoutes = require("./routes/admin");
 
 // API v1 Routes
 app.use("/api/v1/upload", uploadLimiter, uploadRoutes);
@@ -104,6 +105,20 @@ app.use("/api/v1/replies", repliesRoutes);
 app.use("/api/v1/likes", likesRoutes);
 app.use("/api/v1/users", usersRoutes);
 app.use("/api/v1/reports", reportsRoutes);
+
+// Admin 後台（HTML + API）
+// helmet 預設會阻擋 inline script，admin 頁面需要放寬 CSP
+app.use(
+  "/admin",
+  (req, res, next) => {
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    );
+    next();
+  },
+  adminRoutes
+);
 
 // Health Check
 app.get("/", (req, res) => {
@@ -120,6 +135,7 @@ app.get("/", (req, res) => {
       likes: "/api/v1/likes",
       users: "/api/v1/users",
       reports: "/api/v1/reports",
+      admin: "/admin",
     },
   });
 });

@@ -14,6 +14,7 @@ enum APIError: LocalizedError {
     case invalidArgument(message: String)
     case unauthenticated
     case permissionDenied
+    case accountBanned(message: String)
     case notFound
     case resourceExhausted(message: String)
     case internalError
@@ -29,6 +30,8 @@ enum APIError: LocalizedError {
             self = .unauthenticated
         case "PERMISSION_DENIED":
             self = .permissionDenied
+        case "ACCOUNT_BANNED":
+            self = .accountBanned(message: response.error.message)
         case "NOT_FOUND":
             self = .notFound
         case "RESOURCE_EXHAUSTED":
@@ -52,6 +55,8 @@ enum APIError: LocalizedError {
             return "請先登入"
         case .permissionDenied:
             return "沒有權限執行此操作"
+        case .accountBanned(let message):
+            return message
         case .notFound:
             return "找不到資源"
         case .resourceExhausted(let message):

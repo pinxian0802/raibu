@@ -133,7 +133,9 @@ class APIClient {
         
         // 處理其他錯誤狀態碼
         if !(200...299).contains(httpResponse.statusCode) {
-            throw try handleErrorResponse(data: data, statusCode: httpResponse.statusCode)
+            let apiError = try handleErrorResponse(data: data, statusCode: httpResponse.statusCode)
+            await notifyBanNoticeIfNeeded(for: apiError)
+            throw apiError
         }
         
         return try decoder.decode(T.self, from: data)
@@ -166,7 +168,9 @@ class APIClient {
         }
         
         if !(200...299).contains(httpResponse.statusCode) {
-            throw try handleErrorResponse(data: data, statusCode: httpResponse.statusCode)
+            let apiError = try handleErrorResponse(data: data, statusCode: httpResponse.statusCode)
+            await notifyBanNoticeIfNeeded(for: apiError)
+            throw apiError
         }
     }
     
@@ -175,5 +179,11 @@ class APIClient {
             return APIError(from: errorResponse)
         }
         return APIError.unknown(statusCode: statusCode)
+    }
+
+    @MainActor
+    private func notifyBanNoticeIfNeeded(for error: APIError) {
+        guard case .accountBanned(let message) = error else { return }
+        authService.showBanNotice(message: message)
     }
 }

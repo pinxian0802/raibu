@@ -51,4 +51,12 @@ class NavigationCoordinator: ObservableObject {
         targetCoordinate = nil
         targetMapMode = nil
     }
+
+    /// 登入後重置到地圖首頁，避免沿用前一次登入的 tab 狀態
+    func resetToMapHome() {
+        selectedTab = 0
+        createAskLocation = nil
+        isProfileEditing = false
+        clearTarget()
+    }
 }

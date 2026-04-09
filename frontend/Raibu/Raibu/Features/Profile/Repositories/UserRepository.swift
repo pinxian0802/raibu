@@ -94,6 +94,9 @@ extension UserProfile {
             displayName: displayName,
             avatarUrl: avatarUrl,
             bio: bio,
+            isBanned: isBanned,
+            banReason: banReason,
+            bannedAt: bannedAt,
             totalViews: totalViews,
             createdAt: createdAt
         )
